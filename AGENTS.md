@@ -21,10 +21,11 @@ No test framework or lint runner is configured. No CI.
 ## Architecture
 - **Entrypoint**: `src/main.tsx` → `src/App.tsx`
 - **State**: Plain React state persisted to `localStorage` key `simplyfly:v1` via `src/store.ts`. Not Zustand/Redux. The `App` component holds the single `AppState` and passes it down with `onChange` callbacks.
-- **Types**: `src/types.ts` — `User`, `Block`, `Aircraft`, `Availability`, `Assignment`, `AppState`. Also exports `rangesOverlap()` and day label arrays.
+- **Types**: `src/types.ts` — `User`, `Block`, `Aircraft`, `Availability`, `Assignment`, `AppState`. `Assignment` has optional fields `mission` and `areaAssignment`. Also exports `rangesOverlap()` and day label arrays.
 - **Auth**: Email lookup against the seed users list. No real auth, no password check. A "quick access" button skips the form.
 - **Admin scheduling**: Drag-and-drop flyer cards onto a grid of aircraft×blocks (native HTML5 DragEvent, no library).
 - **Styling**: Custom `cn()` utility wrapping `clsx` + `tailwind-merge` in `src/utils/cn.ts`. Custom `navy` and `sky` color palettes defined in `index.css`.
+- **ID generation**: `uid(prefix)` in `src/store.ts` generates random IDs (`prefix-random`). Used by Block, Aircraft, etc.
 
 ## Key directories
 ```
@@ -41,6 +42,8 @@ src/
 - Seed blocks are generated for the *current weekday* (`new Date().getDay()`) at runtime.
 - Admin tab order: Daily scheduler > Block times > Aircraft > Overview > Flyers.
 - The prototype uses `simplyfly:aero` email domain for all users.
+- Block times tab supports inline editing (click time to edit start/end). When adding a block, end auto-fills to start + 1h30m until the end field is manually touched.
+- Scheduler cell inline-editing: Enter/blur saves, Escape cancels.
 
 ## Conventions
 - Import path alias `@/` for `src/` imports.
