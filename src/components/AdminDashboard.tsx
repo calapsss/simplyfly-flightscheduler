@@ -804,6 +804,8 @@ function AircraftManager({ state, onChange }: Props) {
   const [tail, setTail] = useState("");
   const [type, setType] = useState("");
   const [avail, setAvail] = useState<string[]>([]);
+  const [editAircraftId, setEditAircraftId] = useState<string | null>(null);
+  const [editAircraftType, setEditAircraftType] = useState("");
 
   function add() {
     if (!tail.trim() || !type.trim()) return;
@@ -838,6 +840,26 @@ function AircraftManager({ state, onChange }: Props) {
           : a
       ),
     });
+  }
+
+  function startEditType(ac: Aircraft) {
+    setEditAircraftId(ac.id);
+    setEditAircraftType(ac.type);
+  }
+
+  function saveEditType() {
+    if (!editAircraftId || !editAircraftType.trim()) return;
+    onChange({
+      ...state,
+      aircraft: state.aircraft.map((a) =>
+        a.id === editAircraftId ? { ...a, type: editAircraftType.trim() } : a
+      ),
+    });
+    setEditAircraftId(null);
+  }
+
+  function cancelEditType() {
+    setEditAircraftId(null);
   }
 
   return (
@@ -879,9 +901,28 @@ function AircraftManager({ state, onChange }: Props) {
                   <div className="w-10 h-10 rounded-lg bg-navy-900 text-white flex items-center justify-center">
                     <PlaneIcon size={16} />
                   </div>
-                  <div className="flex-1">
+                    <div className="flex-1">
                     <div className="text-[14px] font-semibold text-navy-900 font-mono">{ac.tailNumber}</div>
-                    <div className="text-[12px] text-slate-500">{ac.type}</div>
+                    {editAircraftId === ac.id ? (
+                      <div className="flex items-center gap-1.5 mt-1">
+                        <Input
+                          value={editAircraftType}
+                          onChange={(e) => setEditAircraftType(e.target.value)}
+                          className="!w-[120px] !text-[12px] !py-1"
+                          placeholder="Type"
+                        />
+                        <Button size="sm" onClick={saveEditType} disabled={!editAircraftType.trim()}>Save</Button>
+                        <Button size="sm" variant="secondary" onClick={cancelEditType}>Cancel</Button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => startEditType(ac)}
+                        className="group text-[12px] text-slate-500 hover:text-sky-700"
+                      >
+                        {ac.type}
+                        <span className="ml-1 text-[10px] text-slate-400 opacity-0 group-hover:opacity-100 transition">✎</span>
+                      </button>
+                    )}
                   </div>
                   <Pill tone="sky">{ac.availableBlockIds.length} blocks</Pill>
                   <Button variant="danger" size="sm" onClick={() => remove(ac.id)}>Remove</Button>

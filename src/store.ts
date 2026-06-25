@@ -50,9 +50,9 @@ const initialState: AppState = {
   users: SEED_USERS,
   blocks: seedBlocksForToday(),
   aircraft: [
-    { id: "ac-064", tailNumber: "064", type: "BAT", availableBlockIds: ["b-1", "b-2", "b-3", "b-4", "b-5", "b-6"] },
-    { id: "ac-945", tailNumber: "945", type: "LEM", availableBlockIds: ["b-1", "b-2", "b-3", "b-4", "b-5", "b-6"] },
-    { id: "ac-009", tailNumber: "009", type: "ROS", availableBlockIds: ["b-1"] },
+    { id: "ac-064", tailNumber: "064", type: "T-41", availableBlockIds: ["b-1", "b-2", "b-3", "b-4", "b-5", "b-6"] },
+    { id: "ac-945", tailNumber: "945", type: "T-41", availableBlockIds: ["b-1", "b-2", "b-3", "b-4", "b-5", "b-6"] },
+    { id: "ac-009", tailNumber: "009", type: "T-41", availableBlockIds: ["b-1"] },
   ],
   availability: [
     { id: "av-1",  flyerId: "u-1",  day: new Date().getDay(), ...dailyFull },
