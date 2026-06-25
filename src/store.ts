@@ -98,6 +98,21 @@ const aircraft: Aircraft[] = [
   { id: "ac-046", tailNumber: "046", type: "T-41", availableBlockIds: ["b-1", "b-2", "b-3", "b-4", "b-5", "b-6"] },
 ];
 
+function allDayAvail(flyerId: string): Availability[] {
+  return [0,1,2,3,4,5,6].map((day) => ({
+    id: `av-${flyerId}-all-${day}`, flyerId, day, start: "00:00", end: "23:59",
+  }));
+}
+
+const STUDENT_IDS = [
+  "u-aganon","u-albay","u-austria","u-aviquivil","u-barro",
+  "u-bersola","u-bugaling","u-caisip","u-calumba","u-cendreda",
+  "u-dimaculangan","u-garcia","u-gentallan","u-gonzales","u-mendoza",
+  "u-ocampo","u-platon","u-poblete","u-quimson","u-real",
+  "u-recinto","u-reyeg","u-rocafort","u-romero","u-salon",
+  "u-santos","u-sayson","u-silverio","u-taburaza","u-vestal",
+];
+
 const availability: Availability[] = [
   { id: "av-u-orio-5", flyerId: "u-orio", day: 4, start: "13:58", end: "15:28" },
   { id: "av-u-calayag-3", flyerId: "u-calayag", day: 4, start: "08:58", end: "10:58" },
@@ -134,36 +149,7 @@ const availability: Availability[] = [
   { id: "av-u-gadot-5", flyerId: "u-gadot", day: 4, start: "13:58", end: "15:28" },
   { id: "av-u-batay-an-3", flyerId: "u-batay-an", day: 4, start: "08:58", end: "10:58" },
   { id: "av-u-cayabyab-2", flyerId: "u-cayabyab", day: 4, start: "06:58", end: "08:28" },
-  { id: "av-u-barro-b-1", flyerId: "u-barro", day: 4, start: "04:58", end: "06:28" },
-  { id: "av-u-platon-b-2", flyerId: "u-platon", day: 4, start: "06:58", end: "08:28" },
-  { id: "av-u-aganon-b-3", flyerId: "u-aganon", day: 4, start: "08:58", end: "10:58" },
-  { id: "av-u-santos-b-4", flyerId: "u-santos", day: 4, start: "11:28", end: "13:28" },
-  { id: "av-u-garcia-b-5", flyerId: "u-garcia", day: 4, start: "13:58", end: "15:28" },
-  { id: "av-u-gonzales-b-6", flyerId: "u-gonzales", day: 4, start: "15:58", end: "17:55" },
-  { id: "av-u-calumba-b-1", flyerId: "u-calumba", day: 4, start: "04:58", end: "06:28" },
-  { id: "av-u-bersola-b-2", flyerId: "u-bersola", day: 4, start: "06:58", end: "08:28" },
-  { id: "av-u-romero-b-3", flyerId: "u-romero", day: 4, start: "08:58", end: "10:58" },
-  { id: "av-u-reyeg-b-4", flyerId: "u-reyeg", day: 4, start: "11:28", end: "13:28" },
-  { id: "av-u-caisip-b-5", flyerId: "u-caisip", day: 4, start: "13:58", end: "15:28" },
-  { id: "av-u-real-b-6", flyerId: "u-real", day: 4, start: "15:58", end: "17:55" },
-  { id: "av-u-quimson-b-1", flyerId: "u-quimson", day: 4, start: "04:58", end: "06:28" },
-  { id: "av-u-bugaling-b-2", flyerId: "u-bugaling", day: 4, start: "06:58", end: "08:28" },
-  { id: "av-u-aviquivil-b-3", flyerId: "u-aviquivil", day: 4, start: "08:58", end: "10:58" },
-  { id: "av-u-recinto-b-4", flyerId: "u-recinto", day: 4, start: "11:28", end: "13:28" },
-  { id: "av-u-rocafort-b-5", flyerId: "u-rocafort", day: 4, start: "13:58", end: "15:28" },
-  { id: "av-u-mendoza-b-6", flyerId: "u-mendoza", day: 4, start: "15:58", end: "17:55" },
-  { id: "av-u-austria-b-1", flyerId: "u-austria", day: 4, start: "04:58", end: "06:28" },
-  { id: "av-u-taburaza-b-2", flyerId: "u-taburaza", day: 4, start: "06:58", end: "08:28" },
-  { id: "av-u-cendreda-b-3", flyerId: "u-cendreda", day: 4, start: "08:58", end: "10:58" },
-  { id: "av-u-salon-b-4", flyerId: "u-salon", day: 4, start: "11:28", end: "13:28" },
-  { id: "av-u-sayson-b-5", flyerId: "u-sayson", day: 4, start: "13:58", end: "15:28" },
-  { id: "av-u-vestal-b-6", flyerId: "u-vestal", day: 4, start: "15:58", end: "17:55" },
-  { id: "av-u-dimaculangan-b-1", flyerId: "u-dimaculangan", day: 4, start: "04:58", end: "06:28" },
-  { id: "av-u-gentallan-b-2", flyerId: "u-gentallan", day: 4, start: "06:58", end: "08:28" },
-  { id: "av-u-albay-b-3", flyerId: "u-albay", day: 4, start: "08:58", end: "10:58" },
-  { id: "av-u-ocampo-b-4", flyerId: "u-ocampo", day: 4, start: "11:28", end: "13:28" },
-  { id: "av-u-poblete-b-5", flyerId: "u-poblete", day: 4, start: "13:58", end: "15:28" },
-  { id: "av-u-silverio-b-6", flyerId: "u-silverio", day: 4, start: "15:58", end: "17:55" },
+  ...STUDENT_IDS.flatMap(allDayAvail),
 ];
 
 const assignments: Assignment[] = [
