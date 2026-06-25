@@ -208,7 +208,8 @@ function DailyScheduler({ state, onChange }: Props) {
     if (!droppedFlyerId) return;
     const block = state.blocks.find((b) => b.id === blockId);
     const ac = state.aircraft.find((a) => a.id === aircraftId);
-    if (!block || !ac) return;
+    const flyer = state.users.find((u) => u.id === droppedFlyerId);
+    if (!block || !ac || !flyer) return;
 
     // Aircraft must be available this block
     if (!ac.availableBlockIds.includes(blockId)) return;
@@ -220,29 +221,48 @@ function DailyScheduler({ state, onChange }: Props) {
     const existing = assignmentsByCell.get(cellKey);
 
     if (existing) {
-      // Cell has someone - check if we can add co-pilot
-      if (existing.pilotId === droppedFlyerId || existing.coPilotId === droppedFlyerId) {
-        return; // Same person can't be both
+      if (existing.pilotId) {
+        // Cell has a PIC
+        if (existing.pilotId === droppedFlyerId || existing.coPilotId === droppedFlyerId) return;
+        if (existing.coPilotId) return;
+        // Add as co-pilot (any track can be CP)
+        onChange({
+          ...state,
+          assignments: state.assignments.map((a) =>
+            a.id === existing.id ? { ...a, coPilotId: droppedFlyerId } : a
+          ),
+        });
+      } else {
+        // Cell has CP only (student waiting for PIC)
+        if (existing.coPilotId === droppedFlyerId) return;
+        // Only IP can fill the PIC slot
+        if (flyer.track !== "ip") return;
+        onChange({
+          ...state,
+          assignments: state.assignments.map((a) =>
+            a.id === existing.id ? { ...a, pilotId: droppedFlyerId } : a
+          ),
+        });
       }
-      if (existing.coPilotId) {
-        return; // Already full
-      }
-      // Add as co-pilot
-      onChange({
-        ...state,
-        assignments: state.assignments.map((a) =>
-          a.id === existing.id ? { ...a, coPilotId: droppedFlyerId } : a
-        ),
-      });
     } else {
-      // New assignment - first person is pilot
-      onChange({
-        ...state,
-        assignments: [
-          ...state.assignments,
-          { id: uid("a"), pilotId: droppedFlyerId, aircraftId, blockId },
-        ],
-      });
+      // Empty cell — IP gets PIC, student gets CP
+      if (flyer.track === "ip") {
+        onChange({
+          ...state,
+          assignments: [
+            ...state.assignments,
+            { id: uid("a"), pilotId: droppedFlyerId, aircraftId, blockId },
+          ],
+        });
+      } else {
+        onChange({
+          ...state,
+          assignments: [
+            ...state.assignments,
+            { id: uid("a"), coPilotId: droppedFlyerId, aircraftId, blockId },
+          ],
+        });
+      }
     }
   }
 
@@ -252,19 +272,20 @@ function DailyScheduler({ state, onChange }: Props) {
     if (!a) return;
     
     if (role === "both" || (role === "pilot" && a.coPilotId)) {
-      // Remove entire assignment
       onChange({ ...state, assignments: state.assignments.filter((x) => x.id !== a.id) });
     } else if (role === "pilot" && !a.coPilotId) {
-      // Only pilot, remove whole assignment
       onChange({ ...state, assignments: state.assignments.filter((x) => x.id !== a.id) });
     } else if (role === "coPilot") {
-      // Just remove co-pilot, keep pilot
-      onChange({
-        ...state,
-        assignments: state.assignments.map((x) =>
-          x.id === a.id ? { ...x, coPilotId: undefined } : x
-        ),
-      });
+      if (a.pilotId) {
+        onChange({
+          ...state,
+          assignments: state.assignments.map((x) =>
+            x.id === a.id ? { ...x, coPilotId: undefined } : x
+          ),
+        });
+      } else {
+        onChange({ ...state, assignments: state.assignments.filter((x) => x.id !== a.id) });
+      }
     }
   }
 
@@ -431,6 +452,8 @@ function DailyScheduler({ state, onChange }: Props) {
                                   ? "bg-gradient-to-br from-navy-800 to-navy-900 border-navy-900 text-white"
                                   : pilot
                                   ? "bg-sky-50 border-sky-300"
+                                  : coPilot && !pilot
+                                  ? "bg-violet-50 border-violet-300"
                                   : isSelectedCol
                                   ? "bg-sky-50/70 border-sky-400 border-dashed"
                                   : "bg-white border-slate-200 hover:border-sky-300 hover:bg-sky-50/30"
@@ -488,7 +511,7 @@ function DailyScheduler({ state, onChange }: Props) {
                                       }}
                                       className="mt-1.5 h-6 rounded border border-dashed border-sky-300/50 flex items-center justify-center text-[9px] text-sky-600/70 hover:bg-sky-100/50 cursor-pointer"
                                     >
-                                      + drop co-pilot
+                                      + drop CP
                                     </div>
                                   )}
                                   {missionEditCell === cellKey ? (
@@ -568,9 +591,121 @@ function DailyScheduler({ state, onChange }: Props) {
                                     </button>
                                   )}
                                 </div>
+                              ) : coPilot ? (
+                                <div className="flex-1 flex flex-col justify-center">
+                                  <div className="flex items-center gap-1.5">
+                                    <Pill tone="sky" className="text-[9px] py-0 px-1">CP</Pill>
+                                    <span className="text-[11.5px] font-medium truncate flex-1">
+                                      {coPilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{coPilot.rank}</span>}
+                                      {coPilot.name.split(" ")[0]}
+                                    </span>
+                                    {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
+                                    {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
+                                    {isOverfour && <span className="text-[9px] text-rose-600 font-bold ml-auto" title="4+ flights in a day (SOP violation)">◎</span>}
+                                    <button
+                                      onClick={() => removeFromCell(ac.id, block.id, "coPilot")}
+                                      className="text-[10px] text-slate-400 hover:text-red-400 ml-1"
+                                      title="Remove co-pilot"
+                                    >
+                                      ✕
+                                    </button>
+                                  </div>
+                                  <div
+                                    onDragOver={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      e.dataTransfer.dropEffect = "move";
+                                    }}
+                                    onDrop={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      const fid = e.dataTransfer.getData("text/plain");
+                                      if (fid) performDrop(fid, ac.id, block.id);
+                                    }}
+                                    className="mt-1.5 h-6 rounded border border-dashed border-amber-300/50 bg-amber-50/50 flex items-center justify-center text-[9px] text-amber-600/70 hover:bg-amber-100/50 cursor-pointer"
+                                  >
+                                    + drop PIC
+                                  </div>
+                                  {missionEditCell === cellKey ? (
+                                    <input
+                                      autoFocus
+                                      value={missionDraft}
+                                      onChange={(e) => setMissionDraft(e.target.value)}
+                                      onBlur={() => {
+                                        setMissionEditCell(null);
+                                        if (!missionDraft.trim()) return;
+                                        onChange({
+                                          ...state,
+                                          assignments: state.assignments.map((a) =>
+                                            a.id === assignment!.id ? { ...a, mission: missionDraft.trim() } : a
+                                          ),
+                                        });
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                        if (e.key === "Escape") setMissionEditCell(null);
+                                      }}
+                                      className="mt-1 w-full text-[10px] px-1 py-0.5 rounded border border-sky-400 bg-sky-50 text-sky-800 outline-none"
+                                      placeholder="e.g. NAV 1"
+                                    />
+                                  ) : assignment!.mission ? (
+                                    <button
+                                      onClick={() => { setMissionEditCell(cellKey); setMissionDraft(assignment!.mission!); }}
+                                      className="group mt-1 flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-700"
+                                    >
+                                      <span className="font-medium">MSN: {assignment!.mission}</span>
+                                      <span className="opacity-0 group-hover:opacity-100 transition text-sky-400">✎</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => { setMissionEditCell(cellKey); setMissionDraft(""); }}
+                                      className="group mt-1 flex items-center gap-1 text-[10px] text-slate-400 hover:text-sky-600"
+                                    >
+                                      <span className="opacity-0 group-hover:opacity-100 transition">+ mission</span>
+                                    </button>
+                                  )}
+                                  {areaEditCell === cellKey ? (
+                                    <input
+                                      autoFocus
+                                      value={areaDraft}
+                                      onChange={(e) => setAreaDraft(e.target.value)}
+                                      onBlur={() => {
+                                        setAreaEditCell(null);
+                                        if (!areaDraft.trim()) return;
+                                        onChange({
+                                          ...state,
+                                          assignments: state.assignments.map((a) =>
+                                            a.id === assignment!.id ? { ...a, areaAssignment: areaDraft.trim() } : a
+                                          ),
+                                        });
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                        if (e.key === "Escape") setAreaEditCell(null);
+                                      }}
+                                      className="mt-1 w-full text-[10px] px-1 py-0.5 rounded border border-sky-400 bg-sky-50 text-sky-800 outline-none"
+                                      placeholder="e.g. AA-1"
+                                    />
+                                  ) : assignment!.areaAssignment ? (
+                                    <button
+                                      onClick={() => { setAreaEditCell(cellKey); setAreaDraft(assignment!.areaAssignment!); }}
+                                      className="group mt-1 flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-700"
+                                    >
+                                      <span className="font-medium">AA: {assignment!.areaAssignment}</span>
+                                      <span className="opacity-0 group-hover:opacity-100 transition text-sky-400">✎</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => { setAreaEditCell(cellKey); setAreaDraft(""); }}
+                                      className="group mt-1 flex items-center gap-1 text-[10px] text-slate-400 hover:text-sky-600"
+                                    >
+                                      <span className="opacity-0 group-hover:opacity-100 transition">+ AA</span>
+                                    </button>
+                                  )}
+                                </div>
                               ) : acAvail ? (
                                 <div className="flex-1 flex items-center justify-center text-[10.5px] text-slate-300 uppercase tracking-wider">
-                                  drop pilot
+                                  drop PIC
                                 </div>
                               ) : (
                                 <div className="flex-1 flex items-center justify-center text-[10.5px] text-slate-300">
@@ -696,7 +831,7 @@ function DailyScheduler({ state, onChange }: Props) {
                             )}
                           </div>
                           {selectedBlock && isAssigned && <Pill tone="slate">Assigned</Pill>}
-                          {selectedBlock && !isAssigned && <Pill tone="green">Available</Pill>}
+                          {selectedBlock && !isAssigned && <Pill tone={f.track === "ip" ? "green" : "sky"}>{f.track === "ip" ? "PIC" : "CP"}</Pill>}
                         </div>
                       );
                     })

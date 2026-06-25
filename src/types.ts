@@ -45,7 +45,7 @@ export type Availability = {
 /** A scheduled assignment: pilot + optional co-pilot → aircraft at a specific block */
 export type Assignment = {
   id: string;
-  pilotId: string;
+  pilotId?: string;
   coPilotId?: string;
   aircraftId: string;
   blockId: string;
