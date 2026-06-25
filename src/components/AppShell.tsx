@@ -16,7 +16,7 @@ export function AppShell({
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-slate-200">
-        <div className="max-w-[1400px] mx-auto px-6 h-16 flex items-center justify-between">
+        <div className="max-w-[1600px] mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-6">
             <Logo size={34} />
             <div className="h-6 w-px bg-slate-200" />
@@ -49,12 +49,12 @@ export function AppShell({
           </div>
         </div>
         {tabs && (
-          <div className="max-w-[1400px] mx-auto px-6">
+          <div className="max-w-[1600px] mx-auto px-6">
             {tabs}
           </div>
         )}
       </header>
-      <main className="max-w-[1400px] mx-auto px-6 py-8">{children}</main>
+      <main className="max-w-[1600px] mx-auto px-6 py-8">{children}</main>
     </div>
   );
 }

@@ -5,6 +5,10 @@ export type User = {
   name: string;
   callsign?: string;
   rank?: string;  // 2LT, 1LT, CPT, MAJ, LTC, COL
+  track?: "student" | "ip";
+  qualification?: "2LFE" | "EL" | "1LFE" | "TP" | "TNG" | "NON-TNG";
+  lesson?: string;   // Due Lesson for students
+  dolf?: string;     // Date of Last Flight (YYYY-MM-DD)
   role: Role;
   email: string;
 };

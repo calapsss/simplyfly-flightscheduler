@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import type { AppState, Assignment, Block, Aircraft } from "../types";
+import type { AppState, Assignment, Block, Aircraft, User } from "../types";
 import { DAY_FULL, DAY_LABELS, rangesOverlap } from "../types";
 import { Card, SectionTitle, Button, Input, Label, Stat, Pill } from "./ui";
 import { PlaneIcon } from "./Logo";
@@ -47,7 +47,7 @@ export function AdminDashboard({ state, onChange }: Props) {
         {tab === "blocks"   && <BlockManager state={state} onChange={onChange} />}
         {tab === "aircraft" && <AircraftManager state={state} onChange={onChange} />}
         {tab === "overview" && <Overview state={state} onJump={setTab} />}
-        {tab === "flyers"   && <FlyersView state={state} />}
+        {tab === "flyers"   && <FlyersView state={state} onChange={onChange} />}
       </div>
     </>
   );
@@ -65,6 +65,8 @@ function DailyScheduler({ state, onChange }: Props) {
   const [missionDraft, setMissionDraft] = useState("");
   const [areaEditCell, setAreaEditCell] = useState<string | null>(null);
   const [areaDraft, setAreaDraft] = useState("");
+  const [rosterOpen, setRosterOpen] = useState(true);
+  const [trackFilter, setTrackFilter] = useState<"all" | "student" | "ip">("all");
 
   const dayBlocks = useMemo(
     () => state.blocks.filter((b) => b.day === selectedDay).sort((a, b) => a.start.localeCompare(b.start)),
@@ -174,12 +176,27 @@ function DailyScheduler({ state, onChange }: Props) {
     const flyers = state.users.filter((u) => u.role === "flyer");
     const q = filter.trim().toLowerCase();
     let result = q ? flyers.filter((f) => f.name.toLowerCase().includes(q) || f.callsign?.toLowerCase().includes(q)) : flyers;
+    // Track filter
+    if (trackFilter !== "all") result = result.filter((f) => f.track === trackFilter);
     // If a block is selected, further filter to only available flyers
     if (selectedBlock) {
       result = result.filter((f) => availableForBlock.has(f.id));
     }
     return result;
-  }, [state.users, filter, selectedBlock, availableForBlock]);
+  }, [state.users, filter, selectedBlock, availableForBlock, trackFilter]);
+
+  // Flyers already assigned in the selected block (to gray out in roster)
+  const assignedInBlock = useMemo(() => {
+    if (!selectedBlock) return new Set<string>();
+    const set = new Set<string>();
+    state.assignments.forEach((a) => {
+      if (a.blockId === selectedBlock.id) {
+        if (a.pilotId) set.add(a.pilotId);
+        if (a.coPilotId) set.add(a.coPilotId);
+      }
+    });
+    return set;
+  }, [state.assignments, selectedBlock]);
 
   function canFly(flyerId: string, block: Block) {
     return state.availability.some(
@@ -299,11 +316,14 @@ function DailyScheduler({ state, onChange }: Props) {
       </div>
 
       {/* Mini stats */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Stat label="Day"           value={DAY_FULL[selectedDay]} />
-        <Stat label="Blocks today"  value={dayBlocks.length} />
-        <Stat label="Crew pairs"    value={dayAssignments.length} hint={`${fillRate}% filled`} tone="sky" />
-        <Stat label="Fleet"         value={state.aircraft.length} hint="aircraft on the line" />
+      <div className="flex items-center gap-3 flex-wrap text-[12px]">
+        <Pill tone="navy">{DAY_FULL[selectedDay]}</Pill>
+        <span className="text-slate-300">|</span>
+        <span className="text-slate-500"><strong className="text-navy-900">{dayBlocks.length}</strong> blocks</span>
+        <span className="text-slate-300">|</span>
+        <span className="text-slate-500"><strong className="text-sky-600">{dayAssignments.length}</strong> crew pairs <span className="text-slate-400">({fillRate}%)</span></span>
+        <span className="text-slate-300">|</span>
+        <span className="text-slate-500"><strong className="text-navy-900">{state.aircraft.length}</strong> aircraft</span>
       </div>
 
       {dayBlocks.length === 0 ? (
@@ -317,7 +337,7 @@ function DailyScheduler({ state, onChange }: Props) {
           <p className="text-[14px] text-slate-600">No aircraft in the fleet yet.</p>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-5">
+        <div className={`grid grid-cols-1 gap-5 ${rosterOpen ? "xl:grid-cols-[1fr_280px]" : ""}`}>
           {/* Schedule grid: rows = aircraft, cols = blocks */}
           <Card className="p-4 overflow-hidden">
             <div className="flex items-center justify-between mb-3">
@@ -578,77 +598,120 @@ function DailyScheduler({ state, onChange }: Props) {
           </Card>
 
           {/* Roster */}
-          <Card className="p-4 h-fit xl:sticky xl:top-24">
-            <SectionTitle
-              title={selectedBlock ? `Available for ${selectedBlock.start}–${selectedBlock.end}` : "Roster"}
-              subtitle={
-                selectedBlock
-                  ? `${filteredFlyers.length} of ${state.users.filter((u) => u.role === "flyer").length} flyers can fly this block`
-                  : "Click a block time to filter, or drag any pilot onto a cell"
-              }
-            />
-            {selectedBlock && (
-              <div className="mb-3 flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Pill tone="sky">{DAY_FULL[selectedBlock.day]} · {selectedBlock.start}–{selectedBlock.end}</Pill>
-                </div>
-                <button
-                  onClick={() => setSelectedBlockId(null)}
-                  className="text-[11px] text-slate-500 hover:text-navy-900 underline"
-                >
-                  Show all flyers
-                </button>
-              </div>
-            )}
-            <Input
-              placeholder="Search flyers..."
-              value={filter}
-              onChange={(e) => setFilter(e.target.value)}
-              className="mb-3"
-            />
-            <div className="space-y-1.5 max-h-[520px] overflow-y-auto pr-1">
-              {filteredFlyers.length === 0 ? (
-                <p className="text-[12px] text-slate-400 text-center py-4">
-                  {selectedBlock
-                    ? "No flyers available for this block"
-                    : "No flyers match your search"}
-                </p>
-              ) : (
-                filteredFlyers.map((f) => (
-                  <div
-                    key={f.id}
-                    draggable
-                    onDragStart={(e) => {
-                      e.dataTransfer.setData("text/plain", f.id);
-                      e.dataTransfer.effectAllowed = "move";
-                    }}
-                    className="flex items-center gap-2.5 p-2 rounded-lg border border-sky-200 bg-sky-50 cursor-grab active:cursor-grabbing transition hover:border-sky-300"
-                  >
-                    <div className="w-8 h-8 rounded-full bg-gradient-to-br from-navy-700 to-navy-900 text-white flex items-center justify-center text-[11px] font-semibold shrink-0">
-                      {f.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <div className="text-[12.5px] font-medium text-navy-900 truncate">
-                        {f.rank && <span className="text-[11px] font-semibold text-sky-600 mr-1">{f.rank}</span>}
-                        {f.name}
-                      </div>
-                      {f.callsign && (
-                        <div className="text-[10.5px] font-mono text-slate-400">{f.callsign}</div>
-                      )}
-                    </div>
-                    {selectedBlock && <Pill tone="green">Available</Pill>}
-                  </div>
-                ))
-              )}
+          <Card className={`p-4 h-fit xl:sticky xl:top-24 ${!rosterOpen ? "xl:col-span-1" : ""}`}>
+            <div className="flex items-center justify-between mb-2">
+              <SectionTitle
+                title={selectedBlock ? `Available for ${selectedBlock.start}–${selectedBlock.end}` : "Roster"}
+                subtitle={
+                  selectedBlock
+                    ? `${filteredFlyers.length} of ${state.users.filter((u) => u.role === "flyer").length} flyers can fly this block`
+                    : "Click a block time to filter, or drag any pilot onto a cell"
+                }
+              />
+              <button
+                onClick={() => setRosterOpen(!rosterOpen)}
+                className="text-[11px] text-slate-400 hover:text-navy-900 shrink-0 ml-2"
+                title={rosterOpen ? "Collapse roster" : "Expand roster"}
+              >
+                {rosterOpen ? "▸" : "◂"}
+              </button>
             </div>
-            {selectedBlock && (
-              <div className="mt-3 pt-3 border-t border-slate-100 text-[11.5px] text-slate-500">
-                <span className="text-sky-600 font-medium">{availableForBlock.size}</span> flyer
-                {availableForBlock.size === 1 ? "" : "s"} have declared availability overlapping this block.
-                <div className="mt-1.5 text-[11px]">
-                  <span className="text-slate-400">Tip:</span> First drop = Pilot (PIC), second drop = Co-Pilot (CP)
+            {rosterOpen && (
+              <>
+                {/* Track filter tabs */}
+                <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg mb-3">
+                  {(["all", "student", "ip"] as const).map((t) => (
+                    <button
+                      key={t}
+                      onClick={() => setTrackFilter(t)}
+                      className={`flex-1 py-1 text-[11.5px] font-medium rounded-md transition ${
+                        trackFilter === t ? "bg-white text-navy-900 shadow-sm" : "text-slate-500"
+                      }`}
+                    >
+                      {t === "all" ? "All" : t === "student" ? "AS" : "IP"}
+                    </button>
+                  ))}
                 </div>
-              </div>
+                {selectedBlock && (
+                  <div className="mb-3 flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <Pill tone="sky">{DAY_FULL[selectedBlock.day]} · {selectedBlock.start}–{selectedBlock.end}</Pill>
+                    </div>
+                    <button
+                      onClick={() => setSelectedBlockId(null)}
+                      className="text-[11px] text-slate-500 hover:text-navy-900 underline"
+                    >
+                      Show all flyers
+                    </button>
+                  </div>
+                )}
+                <Input
+                  placeholder="Search flyers..."
+                  value={filter}
+                  onChange={(e) => setFilter(e.target.value)}
+                  className="mb-3"
+                />
+                <div className="space-y-1.5 max-h-[520px] overflow-y-auto pr-1">
+                  {filteredFlyers.length === 0 ? (
+                    <p className="text-[12px] text-slate-400 text-center py-4">
+                      {selectedBlock
+                        ? "No flyers available for this block"
+                        : "No flyers match your search"}
+                    </p>
+                  ) : (
+                    filteredFlyers.map((f) => {
+                      const isAssigned = selectedBlock && assignedInBlock.has(f.id);
+                      return (
+                        <div
+                          key={f.id}
+                          draggable={!isAssigned}
+                          onDragStart={(e) => {
+                            if (isAssigned) return;
+                            e.dataTransfer.setData("text/plain", f.id);
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
+                          className={`flex items-center gap-2.5 p-2 rounded-lg border transition ${
+                            isAssigned
+                              ? "border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed"
+                              : "border-sky-200 bg-sky-50 cursor-grab active:cursor-grabbing hover:border-sky-300"
+                          }`}
+                        >
+                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-navy-700 to-navy-900 text-white flex items-center justify-center text-[11px] font-semibold shrink-0">
+                            {f.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="text-[12.5px] font-medium text-navy-900 truncate flex items-center gap-1.5">
+                              {f.rank && <span className="text-[11px] font-semibold text-sky-600">{f.rank}</span>}
+                              {f.name}
+                              {f.track === "student" && <span className="text-[9px] font-medium text-violet-600 bg-violet-50 px-1 rounded">AS</span>}
+                              {f.track === "ip" && (
+                                <>
+                                  <span className="text-[9px] font-medium text-amber-600 bg-amber-50 px-1 rounded">IP</span>
+                                  {f.qualification && <span className="text-[9px] font-mono text-slate-500 bg-slate-100 px-1 rounded">{f.qualification}</span>}
+                                </>
+                              )}
+                            </div>
+                            {f.callsign && (
+                              <div className="text-[10.5px] font-mono text-slate-400">{f.callsign}</div>
+                            )}
+                          </div>
+                          {selectedBlock && isAssigned && <Pill tone="slate">Assigned</Pill>}
+                          {selectedBlock && !isAssigned && <Pill tone="green">Available</Pill>}
+                        </div>
+                      );
+                    })
+                  )}
+                </div>
+                {selectedBlock && (
+                  <div className="mt-3 pt-3 border-t border-slate-100 text-[11.5px] text-slate-500">
+                    <span className="text-sky-600 font-medium">{availableForBlock.size}</span> flyer
+                    {availableForBlock.size === 1 ? "" : "s"} have declared availability overlapping this block.
+                    <div className="mt-1.5 text-[11px]">
+                      <span className="text-slate-400">Tip:</span> First drop = Pilot (PIC), second drop = Co-Pilot (CP)
+                    </div>
+                  </div>
+                )}
+              </>
             )}
           </Card>
         </div>
@@ -1179,7 +1242,7 @@ function Overview({ state, onJump }: { state: AppState; onJump: (t: Tab) => void
 
 /* ================================== FLYERS ================================ */
 
-function FlyersView({ state }: { state: AppState }) {
+function FlyersView({ state, onChange }: Props) {
   const flyers = state.users.filter((u) => u.role === "flyer");
   return (
     <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
@@ -1188,20 +1251,27 @@ function FlyersView({ state }: { state: AppState }) {
         const assigned = state.assignments.filter((a) => a.pilotId === f.id || a.coPilotId === f.id);
         const asPilot = assigned.filter((a) => a.pilotId === f.id).length;
         const asCoPilot = assigned.filter((a) => a.coPilotId === f.id).length;
+
+        function updateUser(partial: Partial<User>) {
+          onChange({ ...state, users: state.users.map((u) => (u.id === f.id ? { ...u, ...partial } : u)) });
+        }
+
         return (
           <Card key={f.id} className="p-5">
-              <div className="flex items-center gap-3 mb-4">
-                <div className="w-11 h-11 rounded-full bg-gradient-to-br from-navy-700 to-navy-900 text-white flex items-center justify-center text-[14px] font-semibold">
-                  {f.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-                </div>
-                <div>
-                  <div className="text-[14px] font-semibold text-navy-900">
-                    {f.rank && <span className="text-[12px] font-semibold text-sky-600 mr-1">{f.rank}</span>}
-                    {f.name}
-                  </div>
-                  {f.callsign && <div className="text-[11px] font-mono text-slate-400">{f.callsign}</div>}
-                </div>
+            <div className="flex items-center gap-3 mb-4">
+              <div className="w-11 h-11 rounded-full bg-gradient-to-br from-navy-700 to-navy-900 text-white flex items-center justify-center text-[14px] font-semibold">
+                {f.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
               </div>
+              <div className="flex-1">
+                <div className="text-[14px] font-semibold text-navy-900 flex items-center gap-1.5">
+                  {f.rank && <span className="text-[12px] font-semibold text-sky-600">{f.rank}</span>}
+                  {f.name}
+                  {f.track === "student" && <span className="text-[9px] font-medium text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">AS</span>}
+                  {f.track === "ip" && <span className="text-[9px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">IP</span>}
+                </div>
+                {f.callsign && <div className="text-[11px] font-mono text-slate-400">{f.callsign}</div>}
+              </div>
+            </div>
 
             <div className="grid grid-cols-3 gap-2 text-[12px] mb-4">
               <div className="p-2 rounded-lg bg-sky-50 border border-sky-100">
@@ -1217,6 +1287,48 @@ function FlyersView({ state }: { state: AppState }) {
                 <div className="text-slate-500 text-[11px]">as CP</div>
               </div>
             </div>
+
+            {/* Track-specific fields */}
+            {f.track === "student" && (
+              <div className="grid grid-cols-2 gap-2 mb-4">
+                <div>
+                  <Label>Lesson</Label>
+                  <Input
+                    value={f.lesson ?? ""}
+                    onChange={(e) => updateUser({ lesson: e.target.value || undefined })}
+                    placeholder="e.g. LSN 5"
+                    className="!text-[12px]"
+                  />
+                </div>
+                <div>
+                  <Label>DOLF</Label>
+                  <Input
+                    type="date"
+                    value={f.dolf ?? ""}
+                    onChange={(e) => updateUser({ dolf: e.target.value || undefined })}
+                    className="!text-[12px]"
+                  />
+                </div>
+              </div>
+            )}
+            {f.track === "ip" && (
+              <div className="mb-4">
+                <Label>Qualification</Label>
+                <select
+                  value={f.qualification ?? ""}
+                  onChange={(e) => updateUser({ qualification: (e.target.value || undefined) as User["qualification"] })}
+                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] text-navy-900 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
+                >
+                  <option value="">—</option>
+                  <option value="2LFE">2LFE</option>
+                  <option value="EL">EL</option>
+                  <option value="1LFE">1LFE</option>
+                  <option value="TP">TP</option>
+                  <option value="TNG">TNG</option>
+                  <option value="NON-TNG">NON-TNG</option>
+                </select>
+              </div>
+            )}
 
             <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Availability</div>
             <div className="space-y-1.5">

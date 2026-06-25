@@ -21,7 +21,7 @@ No test framework or lint runner is configured. No CI.
 ## Architecture
 - **Entrypoint**: `src/main.tsx` → `src/App.tsx`
 - **State**: Plain React state persisted to `localStorage` key `simplyfly:v1` via `src/store.ts`. Not Zustand/Redux. The `App` component holds the single `AppState` and passes it down with `onChange` callbacks.
-- **Types**: `src/types.ts` — `User`, `Block`, `Aircraft`, `Availability`, `Assignment`, `AppState`. `Assignment` has optional fields `mission` and `areaAssignment`. Also exports `rangesOverlap()` and day label arrays.
+- **Types**: `src/types.ts` — `User`, `Block`, `Aircraft`, `Availability`, `Assignment`, `AppState`. `User` has `track` ("student" | "ip"), `qualification` for IPs, `lesson` and `dolf` for students. `Assignment` has optional fields `mission` and `areaAssignment`. Also exports `rangesOverlap()` and day label arrays.
 - **Auth**: Email lookup against the seed users list. No real auth, no password check. A "quick access" button skips the form.
 - **Admin scheduling**: Drag-and-drop flyer cards onto a grid of aircraft×blocks (native HTML5 DragEvent, no library).
 - **Styling**: Custom `cn()` utility wrapping `clsx` + `tailwind-merge` in `src/utils/cn.ts`. Custom `navy` and `sky` color palettes defined in `index.css`.
@@ -39,11 +39,12 @@ src/
 
 ## Notable details
 - Tailwind v4 uses CSS-first config. To customize theme values, edit the `@theme` block in `src/index.css`.
-- Seed blocks are generated for the *current weekday* (`new Date().getDay()`) at runtime.
+- Seed blocks are fixed to day 4 (Thursday) with six operating periods (04:58–17:55).
 - Admin tab order: Daily scheduler > Block times > Aircraft > Overview > Flyers.
 - The prototype uses `simplyfly:aero` email domain for all users.
 - Block times tab supports inline editing (click time to edit start/end). When adding a block, end auto-fills to start + 1h30m until the end field is manually touched.
 - Scheduler cell inline-editing: Enter/blur saves, Escape cancels.
+- Roster panel has collapsible toggle, track filter (All / AS / IP), and grays out already-assigned flyers when a block is selected.
 
 ## Conventions
 - Import path alias `@/` for `src/` imports.
