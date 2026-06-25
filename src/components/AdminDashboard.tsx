@@ -63,6 +63,8 @@ function DailyScheduler({ state, onChange }: Props) {
   const [filter, setFilter] = useState("");
   const [missionEditCell, setMissionEditCell] = useState<string | null>(null);
   const [missionDraft, setMissionDraft] = useState("");
+  const [areaEditCell, setAreaEditCell] = useState<string | null>(null);
+  const [areaDraft, setAreaDraft] = useState("");
 
   const dayBlocks = useMemo(
     () => state.blocks.filter((b) => b.day === selectedDay).sort((a, b) => a.start.localeCompare(b.start)),
@@ -390,7 +392,7 @@ function DailyScheduler({ state, onChange }: Props) {
                                         onChange({
                                           ...state,
                                           assignments: state.assignments.map((a) =>
-                                            a.id === assignment.id ? { ...a, mission: missionDraft.trim() } : a
+                                            a.id === assignment!.id ? { ...a, mission: missionDraft.trim() } : a
                                           ),
                                         });
                                       }}
@@ -401,12 +403,12 @@ function DailyScheduler({ state, onChange }: Props) {
                                       className="mt-1 w-full text-[10px] px-1 py-0.5 rounded border border-sky-400 bg-sky-50 text-sky-800 outline-none"
                                       placeholder="e.g. NAV 1"
                                     />
-                                  ) : assignment.mission ? (
+                                  ) : assignment!.mission ? (
                                     <button
-                                      onClick={() => { setMissionEditCell(cellKey); setMissionDraft(assignment.mission!); }}
+                                      onClick={() => { setMissionEditCell(cellKey); setMissionDraft(assignment!.mission!); }}
                                       className="group mt-1 flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-700"
                                     >
-                                      <span className="font-medium">MSN: {assignment.mission}</span>
+                                      <span className="font-medium">MSN: {assignment!.mission}</span>
                                       <span className="opacity-0 group-hover:opacity-100 transition text-sky-400">✎</span>
                                     </button>
                                   ) : (
@@ -415,6 +417,44 @@ function DailyScheduler({ state, onChange }: Props) {
                                       className="group mt-1 flex items-center gap-1 text-[10px] text-slate-400 hover:text-sky-600"
                                     >
                                       <span className="opacity-0 group-hover:opacity-100 transition">+ mission</span>
+                                    </button>
+                                  )}
+                                  {areaEditCell === cellKey ? (
+                                    <input
+                                      autoFocus
+                                      value={areaDraft}
+                                      onChange={(e) => setAreaDraft(e.target.value)}
+                                      onBlur={() => {
+                                        setAreaEditCell(null);
+                                        if (!areaDraft.trim()) return;
+                                        onChange({
+                                          ...state,
+                                          assignments: state.assignments.map((a) =>
+                                            a.id === assignment!.id ? { ...a, areaAssignment: areaDraft.trim() } : a
+                                          ),
+                                        });
+                                      }}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                        if (e.key === "Escape") setAreaEditCell(null);
+                                      }}
+                                      className="mt-1 w-full text-[10px] px-1 py-0.5 rounded border border-sky-400 bg-sky-50 text-sky-800 outline-none"
+                                      placeholder="e.g. AA-1"
+                                    />
+                                  ) : assignment!.areaAssignment ? (
+                                    <button
+                                      onClick={() => { setAreaEditCell(cellKey); setAreaDraft(assignment!.areaAssignment!); }}
+                                      className="group mt-1 flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-700"
+                                    >
+                                      <span className="font-medium">AA: {assignment!.areaAssignment}</span>
+                                      <span className="opacity-0 group-hover:opacity-100 transition text-sky-400">✎</span>
+                                    </button>
+                                  ) : (
+                                    <button
+                                      onClick={() => { setAreaEditCell(cellKey); setAreaDraft(""); }}
+                                      className="group mt-1 flex items-center gap-1 text-[10px] text-slate-400 hover:text-sky-600"
+                                    >
+                                      <span className="opacity-0 group-hover:opacity-100 transition">+ AA</span>
                                     </button>
                                   )}
                                 </div>
@@ -539,11 +579,35 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 /* ============================== BLOCK MANAGER ============================= */
 /* Admin defines blocks for a chosen day.                                     */
 
+function addMinutes(time: string, mins: number) {
+  const [h, m] = time.split(":").map(Number);
+  const total = h * 60 + m + mins;
+  const nh = Math.floor(total / 60) % 24;
+  const nm = total % 60;
+  return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
+}
+
 function BlockManager({ state, onChange }: Props) {
   const [day, setDay] = useState(new Date().getDay());
   const [start, setStart] = useState("06:00");
   const [end, setEnd] = useState("09:00");
   const [applyTo, setApplyTo] = useState<"single" | "week">("single");
+  const [endTouched, setEndTouched] = useState(false);
+  const [editingBlockId, setEditingBlockId] = useState<string | null>(null);
+  const [editStart, setEditStart] = useState("");
+  const [editEnd, setEditEnd] = useState("");
+
+  function handleStartChange(val: string) {
+    setStart(val);
+    if (!endTouched) {
+      setEnd(addMinutes(val, 90));
+    }
+  }
+
+  function handleEndChange(val: string) {
+    setEndTouched(true);
+    setEnd(val);
+  }
 
   function add() {
     if (start >= end) return;
@@ -562,6 +626,27 @@ function BlockManager({ state, onChange }: Props) {
       aircraft: state.aircraft.map((a) => ({ ...a, availableBlockIds: a.availableBlockIds.filter((x) => x !== id) })),
       assignments: state.assignments.filter((a) => a.blockId !== id),
     });
+  }
+
+  function startEdit(b: Block) {
+    setEditingBlockId(b.id);
+    setEditStart(b.start);
+    setEditEnd(b.end);
+  }
+
+  function saveEdit() {
+    if (!editingBlockId || editStart >= editEnd) return;
+    onChange({
+      ...state,
+      blocks: state.blocks.map((b) =>
+        b.id === editingBlockId ? { ...b, start: editStart, end: editEnd } : b
+      ),
+    });
+    setEditingBlockId(null);
+  }
+
+  function cancelEdit() {
+    setEditingBlockId(null);
   }
 
   const blocksForDay = state.blocks
@@ -609,11 +694,11 @@ function BlockManager({ state, onChange }: Props) {
           <div className="grid grid-cols-2 gap-3">
             <div>
               <Label>Start</Label>
-              <Input type="time" value={start} onChange={(e) => setStart(e.target.value)} />
+              <Input type="time" value={start} onChange={(e) => handleStartChange(e.target.value)} />
             </div>
             <div>
               <Label>End</Label>
-              <Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
+              <Input type="time" value={end} onChange={(e) => handleEndChange(e.target.value)} />
             </div>
           </div>
           <Button className="w-full" onClick={add} disabled={start >= end}>
@@ -652,10 +737,28 @@ function BlockManager({ state, onChange }: Props) {
                   <span className="text-[16px]">▦</span>
                 </div>
                 <div className="flex-1">
-                  <div className="text-[14px] font-mono font-semibold text-navy-900">{b.start} → {b.end}</div>
-                  <div className="text-[12px] text-slate-500">
-                    {duration(b.start, b.end).toFixed(1)} hours · {DAY_FULL[b.day]}
-                  </div>
+                  {editingBlockId === b.id ? (
+                    <div className="flex items-center gap-2">
+                      <Input type="time" value={editStart} onChange={(e) => setEditStart(e.target.value)} className="!w-[110px] !text-[13px]" />
+                      <span className="text-[13px] text-slate-400 font-mono">→</span>
+                      <Input type="time" value={editEnd} onChange={(e) => setEditEnd(e.target.value)} className="!w-[110px] !text-[13px]" />
+                      <Button size="sm" onClick={saveEdit} disabled={editStart >= editEnd}>Save</Button>
+                      <Button size="sm" variant="secondary" onClick={cancelEdit}>Cancel</Button>
+                    </div>
+                  ) : (
+                    <>
+                      <button
+                        onClick={() => startEdit(b)}
+                        className="group text-[14px] font-mono font-semibold text-navy-900 hover:text-sky-700"
+                      >
+                        {b.start} → {b.end}
+                        <span className="ml-1.5 text-[11px] text-slate-400 opacity-0 group-hover:opacity-100 transition">✎</span>
+                      </button>
+                      <div className="text-[12px] text-slate-500">
+                        {duration(b.start, b.end).toFixed(1)} hours · {DAY_FULL[b.day]}
+                      </div>
+                    </>
+                  )}
                 </div>
                 <Pill tone="slate">{blockAircraftCount(b.id, state)} aircraft</Pill>
                 <Button variant="danger" size="sm" onClick={() => remove(b.id)}>Remove</Button>

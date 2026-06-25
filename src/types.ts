@@ -47,6 +47,8 @@ export type Assignment = {
   blockId: string;
   /** Mission designator (e.g. "NAV 1", "PAT 1") */
   mission?: string;
+  /** Area Assignment (e.g. "AA-1", "AA-2") */
+  areaAssignment?: string;
 };
 
 export type AppState = {
