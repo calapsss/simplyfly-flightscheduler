@@ -95,6 +95,81 @@ function DailyScheduler({ state, onChange }: Props) {
     );
   }, [selectedBlock, state.availability]);
 
+  // Cells where the same person is assigned to multiple aircraft in the same block
+  const conflictingCells = useMemo(() => {
+    const result = new Set<string>();
+    const byBlock = new Map<string, Assignment[]>();
+    state.assignments.forEach((a) => {
+      if (!byBlock.has(a.blockId)) byBlock.set(a.blockId, []);
+      byBlock.get(a.blockId)!.push(a);
+    });
+    for (const [, assignments] of byBlock) {
+      const counts = new Map<string, number>();
+      assignments.forEach((a) => {
+        if (a.pilotId) counts.set(a.pilotId, (counts.get(a.pilotId) || 0) + 1);
+        if (a.coPilotId) counts.set(a.coPilotId, (counts.get(a.coPilotId) || 0) + 1);
+      });
+      for (const [flyerId, count] of counts) {
+        if (count > 1) {
+          assignments.forEach((a) => {
+            if (a.pilotId === flyerId || a.coPilotId === flyerId) {
+              result.add(`${a.aircraftId}:${a.blockId}`);
+            }
+          });
+        }
+      }
+    }
+    return result;
+  }, [state.assignments]);
+
+  // Cells where the same flyer is assigned to 3+ consecutive blocks (SOP violation)
+  const threepeatCells = useMemo(() => {
+    const result = new Set<string>();
+    const flyerAssignments = new Map<string, Map<number, string>>();
+    state.assignments.forEach((a) => {
+      const blockIdx = dayBlocks.findIndex((b) => b.id === a.blockId);
+      if (blockIdx === -1) return;
+      const cellKey = `${a.aircraftId}:${a.blockId}`;
+      const add = (fid: string) => {
+        if (!flyerAssignments.has(fid)) flyerAssignments.set(fid, new Map());
+        flyerAssignments.get(fid)!.set(blockIdx, cellKey);
+      };
+      if (a.pilotId) add(a.pilotId);
+      if (a.coPilotId) add(a.coPilotId);
+    });
+    for (const [, assignments] of flyerAssignments) {
+      const indices = [...assignments.keys()].sort((a, b) => a - b);
+      let runStart = 0;
+      for (let i = 1; i <= indices.length; i++) {
+        if (i === indices.length || indices[i] !== indices[i - 1] + 1) {
+          if (i - runStart >= 3)
+            for (let j = runStart; j < i; j++) result.add(assignments.get(indices[j])!);
+          runStart = i;
+        }
+      }
+    }
+    return result;
+  }, [state.assignments, dayBlocks]);
+
+  // Cells where the same flyer is assigned to 4+ flights in a day (SOP violation)
+  const overfourCells = useMemo(() => {
+    const result = new Set<string>();
+    const counts = new Map<string, number>();
+    state.assignments.forEach((a) => {
+      if (!dayBlocks.some((b) => b.id === a.blockId)) return;
+      if (a.pilotId) counts.set(a.pilotId, (counts.get(a.pilotId) || 0) + 1);
+      if (a.coPilotId) counts.set(a.coPilotId, (counts.get(a.coPilotId) || 0) + 1);
+    });
+    const violators = new Set<string>();
+    for (const [fid, c] of counts) if (c >= 4) violators.add(fid);
+    state.assignments.forEach((a) => {
+      if (!dayBlocks.some((b) => b.id === a.blockId)) return;
+      if ((a.pilotId && violators.has(a.pilotId)) || (a.coPilotId && violators.has(a.coPilotId)))
+        result.add(`${a.aircraftId}:${a.blockId}`);
+    });
+    return result;
+  }, [state.assignments, dayBlocks]);
+
   const filteredFlyers = useMemo(() => {
     const flyers = state.users.filter((u) => u.role === "flyer");
     const q = filter.trim().toLowerCase();
@@ -307,6 +382,9 @@ function DailyScheduler({ state, onChange }: Props) {
                         const acAvail = ac.availableBlockIds.includes(block.id);
                         const isSelectedCol = selectedBlockId === block.id;
                         const isFull = !!pilot && !!coPilot;
+                        const isConflict = assignment && conflictingCells.has(cellKey);
+                        const isThreepeat = !isConflict && assignment && threepeatCells.has(cellKey);
+                        const isOverfour = !isConflict && !isThreepeat && assignment && overfourCells.has(cellKey);
                         return (
                           <td key={block.id} className="py-1">
                             <div
@@ -321,7 +399,13 @@ function DailyScheduler({ state, onChange }: Props) {
                                 if (fid) performDrop(fid, ac.id, block.id);
                               }}
                               className={`h-24 rounded-lg border transition-all flex flex-col p-1.5 ${
-                                !acAvail
+                                isConflict
+                                  ? "bg-red-50 border-red-400 ring-1 ring-red-400"
+                                  : isThreepeat
+                                  ? "bg-amber-50 border-amber-400 ring-1 ring-amber-400"
+                                  : isOverfour
+                                  ? "bg-rose-50 border-rose-400 ring-1 ring-rose-400"
+                                  : !acAvail
                                   ? "bg-slate-50/50 border-dashed border-slate-200 cursor-not-allowed"
                                   : isFull
                                   ? "bg-gradient-to-br from-navy-800 to-navy-900 border-navy-900 text-white"
@@ -340,6 +424,9 @@ function DailyScheduler({ state, onChange }: Props) {
                                       {pilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{pilot.rank}</span>}
                                       {pilot.name.split(" ")[0]}
                                     </span>
+                                    {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
+                                    {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
+                                    {isOverfour && <span className="text-[9px] text-rose-600 font-bold ml-auto" title="4+ flights in a day (SOP violation)">◎</span>}
                                     <button
                                       onClick={() => removeFromCell(ac.id, block.id, "pilot")}
                                       className="text-[10px] text-slate-400 hover:text-red-400 ml-1"
@@ -355,6 +442,9 @@ function DailyScheduler({ state, onChange }: Props) {
                                         {coPilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{coPilot.rank}</span>}
                                         {coPilot.name.split(" ")[0]}
                                       </span>
+                                    {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
+                                    {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
+                                    {isOverfour && <span className="text-[9px] text-rose-600 font-bold ml-auto" title="4+ flights in a day (SOP violation)">◎</span>}
                                       <button
                                         onClick={() => removeFromCell(ac.id, block.id, "coPilot")}
                                         className="text-[10px] text-slate-400 hover:text-red-400 ml-1"
