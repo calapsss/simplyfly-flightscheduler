@@ -32,22 +32,12 @@ export default function App() {
     <AppShell
       user={user}
       onLogout={handleLogout}
-      tabs={
-        user.role === "admin" ? undefined : undefined
-      }
+      noHeader={user.role === "admin"}
     >
-      <div className="flex items-center justify-end mb-4">
-        <button
-          onClick={handleReset}
-          className="text-[11.5px] text-slate-400 hover:text-slate-600 underline-offset-2 hover:underline"
-        >
-          Reset demo data
-        </button>
-      </div>
       {user.role === "flyer" ? (
         <FlyerDashboard state={state} user={user} onChange={setState} />
       ) : (
-        <AdminDashboard state={state} onChange={setState} />
+        <AdminDashboard state={state} onChange={setState} onReset={handleReset} />
       )}
     </AppShell>
   );

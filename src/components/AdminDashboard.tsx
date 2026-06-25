@@ -1,8 +1,8 @@
 import { useMemo, useState } from "react";
 import type { AppState, Assignment, Block, Aircraft, User } from "../types";
 import { DAY_FULL, DAY_LABELS, rangesOverlap } from "../types";
-import { Card, SectionTitle, Button, Input, Label, Stat, Pill } from "./ui";
-import { PlaneIcon } from "./Logo";
+import { Card, SectionTitle, Button, Input, Label, Pill } from "./ui";
+import { Logo, PlaneIcon } from "./Logo";
 import { uid } from "../store";
 
 type Props = {
@@ -10,63 +10,13 @@ type Props = {
   onChange: (next: AppState) => void;
 };
 
-type Tab = "overview" | "blocks" | "aircraft" | "schedule" | "flyers";
+type PropsWithReset = Props & { onReset: () => void };
 
-export function AdminDashboard({ state, onChange }: Props) {
-  const [tab, setTab] = useState<Tab>("schedule");
-
-  const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: "schedule", label: "Daily scheduler", icon: "◎" },
-    { id: "blocks",   label: "Block times",    icon: "▦" },
-    { id: "aircraft", label: "Aircraft",       icon: "✈" },
-    { id: "overview", label: "Overview",       icon: "◉" },
-    { id: "flyers",   label: "Flyers",         icon: "◈" },
-  ];
-
-  return (
-    <>
-      <nav className="flex items-center gap-1 border-b border-slate-200 -mb-px overflow-x-auto">
-        {tabs.map((t) => (
-          <button
-            key={t.id}
-            onClick={() => setTab(t.id)}
-            className={`px-4 py-3 text-[13px] font-medium border-b-2 transition relative -mb-px whitespace-nowrap ${
-              tab === t.id
-                ? "border-navy-900 text-navy-900"
-                : "border-transparent text-slate-500 hover:text-navy-900"
-            }`}
-          >
-            <span className="mr-1.5 text-sky-500">{t.icon}</span>
-            {t.label}
-          </button>
-        ))}
-      </nav>
-
-      <div className="py-6">
-        {tab === "schedule" && <DailyScheduler state={state} onChange={onChange} />}
-        {tab === "blocks"   && <BlockManager state={state} onChange={onChange} />}
-        {tab === "aircraft" && <AircraftManager state={state} onChange={onChange} />}
-        {tab === "overview" && <Overview state={state} onJump={setTab} />}
-        {tab === "flyers"   && <FlyersView state={state} onChange={onChange} />}
-      </div>
-    </>
-  );
-}
-
-/* ============================== DAILY SCHEDULER ============================ */
-/* Aircraft on Y-axis, block times on X-axis. Pick a day, then schedule.       */
-/* Each cell can have a Pilot + Co-Pilot.                                      */
-
-function DailyScheduler({ state, onChange }: Props) {
+export function AdminDashboard({ state, onChange, onReset }: PropsWithReset) {
   const [selectedDay, setSelectedDay] = useState(new Date().getDay());
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-  const [filter, setFilter] = useState("");
-  const [missionEditCell, setMissionEditCell] = useState<string | null>(null);
-  const [missionDraft, setMissionDraft] = useState("");
-  const [areaEditCell, setAreaEditCell] = useState<string | null>(null);
-  const [areaDraft, setAreaDraft] = useState("");
+  const [drawerView, setDrawerView] = useState<"blocks" | "aircraft" | "flyers" | null>(null);
   const [rosterOpen, setRosterOpen] = useState(true);
-  const [trackFilter, setTrackFilter] = useState<"all" | "student" | "ip">("all");
 
   const dayBlocks = useMemo(
     () => state.blocks.filter((b) => b.day === selectedDay).sort((a, b) => a.start.localeCompare(b.start)),
@@ -78,16 +28,14 @@ function DailyScheduler({ state, onChange }: Props) {
     [selectedBlockId, state.blocks]
   );
 
-  // Assignment lookup: aircraftId -> blockId -> assignment
   const assignmentsByCell = useMemo(() => {
-    const map = new Map<string, Assignment>(); // key: `${aircraftId}:${blockId}`
+    const map = new Map<string, Assignment>();
     state.assignments.forEach((a) => {
       map.set(`${a.aircraftId}:${a.blockId}`, a);
     });
     return map;
   }, [state.assignments]);
 
-  // Flyers available for the selected block (whose range overlaps the block)
   const availableForBlock = useMemo(() => {
     if (!selectedBlock) return new Set<string>();
     return new Set(
@@ -97,7 +45,6 @@ function DailyScheduler({ state, onChange }: Props) {
     );
   }, [selectedBlock, state.availability]);
 
-  // Cells where the same person is assigned to multiple aircraft in the same block
   const conflictingCells = useMemo(() => {
     const result = new Set<string>();
     const byBlock = new Map<string, Assignment[]>();
@@ -124,7 +71,6 @@ function DailyScheduler({ state, onChange }: Props) {
     return result;
   }, [state.assignments]);
 
-  // Cells where the same flyer is assigned to 3+ consecutive blocks (SOP violation)
   const threepeatCells = useMemo(() => {
     const result = new Set<string>();
     const flyerAssignments = new Map<string, Map<number, string>>();
@@ -153,7 +99,6 @@ function DailyScheduler({ state, onChange }: Props) {
     return result;
   }, [state.assignments, dayBlocks]);
 
-  // Cells where the same flyer is assigned to 4+ flights in a day (SOP violation)
   const overfourCells = useMemo(() => {
     const result = new Set<string>();
     const counts = new Map<string, number>();
@@ -172,31 +117,47 @@ function DailyScheduler({ state, onChange }: Props) {
     return result;
   }, [state.assignments, dayBlocks]);
 
-  const filteredFlyers = useMemo(() => {
-    const flyers = state.users.filter((u) => u.role === "flyer");
-    const q = filter.trim().toLowerCase();
-    let result = q ? flyers.filter((f) => f.name.toLowerCase().includes(q) || f.callsign?.toLowerCase().includes(q)) : flyers;
-    // Track filter
-    if (trackFilter !== "all") result = result.filter((f) => f.track === trackFilter);
-    // If a block is selected, further filter to only available flyers
-    if (selectedBlock) {
-      result = result.filter((f) => availableForBlock.has(f.id));
-    }
-    return result;
-  }, [state.users, filter, selectedBlock, availableForBlock, trackFilter]);
+  const warningsList = useMemo(() => {
+    const list: { flyerName: string; type: "conflict" | "threepeat" | "overfour" }[] = [];
+    const conflictFlyers = new Set<string>();
+    const threepeatFlyers = new Set<string>();
+    const overfourFlyers = new Set<string>();
 
-  // Flyers already assigned in the selected block (to gray out in roster)
-  const assignedInBlock = useMemo(() => {
-    if (!selectedBlock) return new Set<string>();
-    const set = new Set<string>();
     state.assignments.forEach((a) => {
-      if (a.blockId === selectedBlock.id) {
-        if (a.pilotId) set.add(a.pilotId);
-        if (a.coPilotId) set.add(a.coPilotId);
+      const cellKey = `${a.aircraftId}:${a.blockId}`;
+      if (conflictingCells.has(cellKey)) {
+        if (a.pilotId) conflictFlyers.add(a.pilotId);
+        if (a.coPilotId) conflictFlyers.add(a.coPilotId);
+      }
+      if (threepeatCells.has(cellKey)) {
+        if (a.pilotId) threepeatFlyers.add(a.pilotId);
+        if (a.coPilotId) threepeatFlyers.add(a.coPilotId);
+      }
+      if (overfourCells.has(cellKey)) {
+        if (a.pilotId) overfourFlyers.add(a.pilotId);
+        if (a.coPilotId) overfourFlyers.add(a.coPilotId);
       }
     });
-    return set;
-  }, [state.assignments, selectedBlock]);
+
+    const nameFor = (id: string) => state.users.find((u) => u.id === id)?.name ?? id;
+
+    conflictFlyers.forEach((id) => list.push({ flyerName: nameFor(id), type: "conflict" }));
+    threepeatFlyers.forEach((id) => list.push({ flyerName: nameFor(id), type: "threepeat" }));
+    overfourFlyers.forEach((id) => list.push({ flyerName: nameFor(id), type: "overfour" }));
+
+    return list;
+  }, [state.assignments, state.users, conflictingCells, threepeatCells, overfourCells]);
+
+  const dayAssignments = state.assignments.filter((a) => {
+    const b = state.blocks.find((x) => x.id === a.blockId);
+    return b?.day === selectedDay;
+  });
+  const totalSlots = state.aircraft.length * dayBlocks.length;
+  const fillRate = totalSlots ? Math.round((dayAssignments.length / totalSlots) * 100) : 0;
+
+  function handleBlockHeaderClick(blockId: string) {
+    setSelectedBlockId((curr) => (curr === blockId ? null : blockId));
+  }
 
   function canFly(flyerId: string, block: Block) {
     return state.availability.some(
@@ -210,11 +171,7 @@ function DailyScheduler({ state, onChange }: Props) {
     const ac = state.aircraft.find((a) => a.id === aircraftId);
     const flyer = state.users.find((u) => u.id === droppedFlyerId);
     if (!block || !ac || !flyer) return;
-
-    // Aircraft must be available this block
     if (!ac.availableBlockIds.includes(blockId)) return;
-
-    // Flyer must be available in the block's time window
     if (!canFly(droppedFlyerId, block)) return;
 
     const cellKey = `${aircraftId}:${blockId}`;
@@ -222,10 +179,8 @@ function DailyScheduler({ state, onChange }: Props) {
 
     if (existing) {
       if (existing.pilotId) {
-        // Cell has a PIC
         if (existing.pilotId === droppedFlyerId || existing.coPilotId === droppedFlyerId) return;
         if (existing.coPilotId) return;
-        // Add as co-pilot (any track can be CP)
         onChange({
           ...state,
           assignments: state.assignments.map((a) =>
@@ -233,9 +188,7 @@ function DailyScheduler({ state, onChange }: Props) {
           ),
         });
       } else {
-        // Cell has CP only (student waiting for PIC)
         if (existing.coPilotId === droppedFlyerId) return;
-        // Only IP can fill the PIC slot
         if (flyer.track !== "ip") return;
         onChange({
           ...state,
@@ -245,7 +198,6 @@ function DailyScheduler({ state, onChange }: Props) {
         });
       }
     } else {
-      // Empty cell — IP gets PIC, student gets CP
       if (flyer.track === "ip") {
         onChange({
           ...state,
@@ -270,7 +222,6 @@ function DailyScheduler({ state, onChange }: Props) {
     const cellKey = `${aircraftId}:${blockId}`;
     const a = assignmentsByCell.get(cellKey);
     if (!a) return;
-    
     if (role === "both" || (role === "pilot" && a.coPilotId)) {
       onChange({ ...state, assignments: state.assignments.filter((x) => x.id !== a.id) });
     } else if (role === "pilot" && !a.coPilotId) {
@@ -297,561 +248,652 @@ function DailyScheduler({ state, onChange }: Props) {
     });
   }
 
-  function handleBlockHeaderClick(blockId: string) {
-    setSelectedBlockId((curr) => (curr === blockId ? null : blockId));
-  }
-
-  const dayAssignments = state.assignments.filter((a) => {
-    const b = state.blocks.find((x) => x.id === a.blockId);
-    return b?.day === selectedDay;
-  });
-  const totalSlots = state.aircraft.length * dayBlocks.length;
-  const fillRate = totalSlots ? Math.round((dayAssignments.length / totalSlots) * 100) : 0;
+  const conflicts = warningsList.filter((w) => w.type === "conflict");
+  const threepeats = warningsList.filter((w) => w.type === "threepeat");
+  const overfours = warningsList.filter((w) => w.type === "overfour");
 
   return (
-    <div className="space-y-5">
-      {/* Top bar: day selector + stats */}
-      <div className="flex flex-col lg:flex-row lg:items-end lg:justify-between gap-4">
-        <div>
-          <h2 className="text-[17px] font-semibold text-navy-900 tracking-tight">Daily scheduler</h2>
-          <p className="text-[13px] text-slate-500 mt-0.5">
-            Aircraft on rows, time blocks on columns. Each block can have a Pilot + Co-Pilot.
-          </p>
-        </div>
-
-        <div className="flex items-center gap-1 p-1 bg-white border border-slate-200 rounded-xl overflow-x-auto">
-          {DAY_LABELS.map((d, i) => (
+    <div className="min-h-screen bg-slate-50">
+      {/* ============================= TOPBAR ============================= */}
+      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur border-b border-slate-200">
+        <div className="max-w-[1600px] mx-auto px-6 h-14 flex items-center justify-between">
+          <div className="flex items-center gap-4">
+            <Logo size={30} showWordmark />
+            <div className="h-5 w-px bg-slate-200" />
             <button
-              key={d}
-              onClick={() => { setSelectedDay(i); setSelectedBlockId(null); }}
-              className={`px-3.5 py-2 rounded-lg text-[12.5px] font-medium transition whitespace-nowrap ${
-                selectedDay === i
-                  ? "bg-navy-900 text-white shadow-sm"
-                  : "text-slate-600 hover:bg-slate-100"
-              }`}
+              onClick={() => {
+                const next = (selectedDay + 1) % 7;
+                setSelectedDay(next);
+                setSelectedBlockId(null);
+              }}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium text-navy-900 hover:bg-slate-100 transition"
+              title="Change day (click to cycle)"
             >
-              {d}
+              <span className="text-slate-400 text-[11px]">📅</span>
+              {DAY_LABELS[selectedDay]}
             </button>
-          ))}
+          </div>
+
+          <div className="flex items-center gap-1">
+            {(["blocks", "aircraft", "flyers"] as const).map((view) => (
+              <button
+                key={view}
+                onClick={() => setDrawerView(drawerView === view ? null : view)}
+                className={`px-3 py-1.5 rounded-lg text-[12.5px] font-medium transition
+                  ${drawerView === view
+                    ? "bg-navy-900 text-white shadow-sm"
+                    : "text-slate-600 hover:bg-slate-100 hover:text-navy-900"
+                  }`}
+              >
+                {view === "blocks" ? "Blocks" : view === "aircraft" ? "Aircraft" : "Flyers"}
+              </button>
+            ))}
+            <div className="w-px h-5 bg-slate-200 mx-2" />
+            <button
+              onClick={onReset}
+              className="text-[12px] text-slate-400 hover:text-slate-600 px-2 py-1.5 rounded-md hover:bg-slate-100 transition"
+            >
+              Reset
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* ============================= STRIP ============================== */}
+      <div className="bg-white border-b border-slate-200">
+        <div className="max-w-[1600px] mx-auto px-6 py-2.5 flex items-center flex-wrap gap-x-4 gap-y-1.5">
+          {/* Day pills */}
+          <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg">
+            {DAY_LABELS.map((d, i) => (
+              <button
+                key={d}
+                onClick={() => { setSelectedDay(i); setSelectedBlockId(null); }}
+                className={`px-2.5 py-1 rounded-md text-[11.5px] font-medium transition whitespace-nowrap ${
+                  selectedDay === i
+                    ? "bg-white text-navy-900 shadow-sm"
+                    : "text-slate-500 hover:bg-slate-50"
+                }`}
+              >
+                {d}
+              </button>
+            ))}
+          </div>
+
+          {/* Quick stats */}
+          <span className="text-[12px] text-slate-400 font-mono">|</span>
+          <span className="text-[12px] text-slate-500">
+            <strong className="text-navy-900">{dayBlocks.length}</strong> blocks
+          </span>
+          <span className="text-[12px] text-slate-500">
+            <strong className="text-sky-600">{dayAssignments.length}</strong> pairs
+            <span className="text-slate-400"> ({fillRate}%)</span>
+          </span>
+          <span className="text-[12px] text-slate-500">
+            <strong className="text-navy-900">{state.aircraft.length}</strong> aircraft
+          </span>
+
+          {/* Warnings summary */}
+          {(conflicts.length > 0 || threepeats.length > 0 || overfours.length > 0) && (
+            <>
+              <span className="text-[12px] text-slate-400 font-mono">|</span>
+              {conflicts.length > 0 && (
+                <span className="text-[11.5px] text-red-600" title={conflicts.map((w) => w.flyerName).join(", ")}>
+                  ⚠ {conflicts.length} conflict{conflicts.length > 1 ? "s" : ""}: {conflicts.map((w) => w.flyerName.split(" ").pop()).join(", ")}
+                </span>
+              )}
+              {threepeats.length > 0 && (
+                <span className="text-[11.5px] text-amber-600" title={threepeats.map((w) => w.flyerName).join(", ")}>
+                  ⚡ {threepeats.length} threepeat{threepeats.length > 1 ? "s" : ""}: {threepeats.map((w) => w.flyerName.split(" ").pop()).join(", ")}
+                </span>
+              )}
+              {overfours.length > 0 && (
+                <span className="text-[11.5px] text-rose-600" title={overfours.map((w) => w.flyerName).join(", ")}>
+                  ◎ {overfours.length} over-four: {overfours.map((w) => w.flyerName.split(" ").pop()).join(", ")}
+                </span>
+              )}
+            </>
+          )}
         </div>
       </div>
 
-      {/* Mini stats */}
-      <div className="flex items-center gap-3 flex-wrap text-[12px]">
-        <Pill tone="navy">{DAY_FULL[selectedDay]}</Pill>
-        <span className="text-slate-300">|</span>
-        <span className="text-slate-500"><strong className="text-navy-900">{dayBlocks.length}</strong> blocks</span>
-        <span className="text-slate-300">|</span>
-        <span className="text-slate-500"><strong className="text-sky-600">{dayAssignments.length}</strong> crew pairs <span className="text-slate-400">({fillRate}%)</span></span>
-        <span className="text-slate-300">|</span>
-        <span className="text-slate-500"><strong className="text-navy-900">{state.aircraft.length}</strong> aircraft</span>
-      </div>
+      {/* ============================= MAIN ============================== */}
+      <div className="max-w-[1600px] mx-auto px-6 py-5">
+        {dayBlocks.length === 0 ? (
+          <Card className="p-10 text-center">
+            <div className="text-slate-300 text-3xl mb-2">▦</div>
+            <p className="text-[14px] text-slate-600">No block times defined for {DAY_FULL[selectedDay]}.</p>
+            <p className="text-[12px] text-slate-400 mt-1">Open <button onClick={() => setDrawerView("blocks")} className="text-sky-600 underline hover:text-sky-700">Blocks</button> to set up today's operating windows.</p>
+          </Card>
+        ) : state.aircraft.length === 0 ? (
+          <Card className="p-10 text-center">
+            <p className="text-[14px] text-slate-600">No aircraft in the fleet yet.</p>
+            <p className="text-[12px] text-slate-400 mt-1">Open <button onClick={() => setDrawerView("aircraft")} className="text-sky-600 underline hover:text-sky-700">Aircraft</button> to add some.</p>
+          </Card>
+        ) : (
+          <div className="flex gap-5 relative">
+            {/* ============== SIDEBAR (left) ============== */}
+            <aside className={`w-[270px] shrink-0 transition-all duration-200 ${rosterOpen ? "" : "w-0 overflow-hidden"}`}>
+              <div className="space-y-4">
+                {/* Collapse toggle */}
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] font-semibold text-slate-500 uppercase tracking-wider">
+                    {rosterOpen ? "Roster" : ""}
+                  </span>
+                  <button
+                    onClick={() => setRosterOpen(!rosterOpen)}
+                    className="text-[11px] text-slate-400 hover:text-navy-900 shrink-0"
+                    title={rosterOpen ? "Collapse sidebar" : "Expand sidebar"}
+                  >
+                    {rosterOpen ? "◂" : "▸"}
+                  </button>
+                </div>
 
-      {dayBlocks.length === 0 ? (
-        <Card className="p-10 text-center">
-          <div className="text-slate-300 text-3xl mb-2">▦</div>
-          <p className="text-[14px] text-slate-600">No block times defined for {DAY_FULL[selectedDay]}.</p>
-          <p className="text-[12px] text-slate-400 mt-1">Open the "Block times" tab to set up today's operating windows.</p>
-        </Card>
-      ) : state.aircraft.length === 0 ? (
-        <Card className="p-10 text-center">
-          <p className="text-[14px] text-slate-600">No aircraft in the fleet yet.</p>
-        </Card>
-      ) : (
-        <div className={`grid grid-cols-1 gap-5 ${rosterOpen ? "xl:grid-cols-[1fr_280px]" : ""}`}>
-          {/* Schedule grid: rows = aircraft, cols = blocks */}
-          <Card className="p-4 overflow-hidden">
-            <div className="flex items-center justify-between mb-3">
-              <div className="flex items-center gap-2 text-[12px] text-slate-500">
-                <span className="font-mono text-[11px] px-1.5 py-0.5 bg-navy-900 text-white rounded">SCHEDULE</span>
-                <span>{DAY_FULL[selectedDay]}</span>
+                {rosterOpen && (
+                  <>
+                    {/* ROSTER */}
+                    <RosterPanel
+                      state={state}
+                      selectedBlock={selectedBlock}
+                      onBlockFilter={setSelectedBlockId}
+                      availableForBlock={availableForBlock}
+                    />
+
+                    {/* WARNINGS */}
+                    {warningsList.length > 0 && (
+                      <Card className="p-3">
+                        <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                          Warnings
+                        </div>
+                        <div className="space-y-1.5">
+                          {conflicts.map((w) => (
+                            <div key={w.flyerName} className="flex items-center gap-1.5 text-[11.5px] text-red-700">
+                              <span>⚠</span>
+                              <span className="font-medium">{w.flyerName}</span>
+                              <span className="text-red-500 ml-auto">conflict</span>
+                            </div>
+                          ))}
+                          {threepeats.map((w) => (
+                            <div key={w.flyerName} className="flex items-center gap-1.5 text-[11.5px] text-amber-700">
+                              <span>⚡</span>
+                              <span className="font-medium">{w.flyerName}</span>
+                              <span className="text-amber-500 ml-auto">3× consecutive</span>
+                            </div>
+                          ))}
+                          {overfours.map((w) => (
+                            <div key={w.flyerName} className="flex items-center gap-1.5 text-[11.5px] text-rose-700">
+                              <span>◎</span>
+                              <span className="font-medium">{w.flyerName}</span>
+                              <span className="text-rose-500 ml-auto">4+ flights</span>
+                            </div>
+                          ))}
+                        </div>
+                      </Card>
+                    )}
+
+                    {/* SELECTED CELL */}
+                    {selectedBlockId && (
+                      <SelectedCellPanel
+                        state={state}
+                        selectedBlockId={selectedBlockId}
+                      />
+                    )}
+                  </>
+                )}
               </div>
-              <Button variant="secondary" size="sm" onClick={clearDay}>Clear day</Button>
+            </aside>
+
+            {/* ============== SCHEDULER GRID ============== */}
+            <div className="flex-1 min-w-0">
+              <SchedulerGrid
+                state={state}
+                onChange={onChange}
+                selectedBlockId={selectedBlockId}
+                onBlockHeaderClick={handleBlockHeaderClick}
+                dayBlocks={dayBlocks}
+                assignmentsByCell={assignmentsByCell}
+                conflictingCells={conflictingCells}
+                threepeatCells={threepeatCells}
+                overfourCells={overfourCells}
+                onDrop={performDrop}
+                onRemove={removeFromCell}
+                onClearDay={clearDay}
+                dayAssignmentsCount={dayAssignments.length}
+              />
             </div>
 
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[700px] border-separate border-spacing-1.5">
-                <thead>
-                  <tr>
-                    <th className="w-44 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400 py-2 px-2">
-                      Aircraft
-                    </th>
-                    {dayBlocks.map((block) => {
-                      const isSelected = selectedBlockId === block.id;
-                      return (
-                        <th
-                          key={block.id}
-                          onClick={() => handleBlockHeaderClick(block.id)}
-                          className={`text-center text-[11px] font-semibold uppercase tracking-wider py-2 px-1 cursor-pointer transition ${
-                            isSelected
-                              ? "bg-sky-100 text-sky-700 rounded-t-lg"
-                              : "text-slate-400 hover:bg-slate-50"
-                          }`}
-                           title="Click to filter roster to available flyers"
-                        >
-                          <div className={`font-mono text-[13px] ${isSelected ? "text-sky-800" : "text-navy-900"}`}>{block.start}</div>
-                          <div className="text-[10px] font-normal opacity-70">to {block.end}</div>
-                           {isSelected && <div className="text-[9px] mt-0.5 font-medium text-sky-600">selected</div>}
-                        </th>
-                      );
-                    })}
-                  </tr>
-                </thead>
-                <tbody>
-                  {state.aircraft.map((ac) => (
-                    <tr key={ac.id}>
-                      <td className="py-1.5 px-2 align-middle">
-                        <div className="flex items-center gap-2.5">
-                          <div className="w-9 h-9 rounded-lg bg-navy-900 text-white flex items-center justify-center shrink-0">
-                            <PlaneIcon size={15} />
+            {/* ============== DRAWER (overlays from right) ============== */}
+            {drawerView && (
+              <>
+                <div
+                  className="fixed inset-0 z-30 bg-black/10"
+                  onClick={() => setDrawerView(null)}
+                />
+                <aside className="fixed top-0 right-0 z-40 h-full w-[420px] bg-white shadow-2xl border-l border-slate-200 overflow-y-auto">
+                  <div className="sticky top-0 bg-white/80 backdrop-blur border-b border-slate-200 px-5 py-3 flex items-center justify-between z-10">
+                    <span className="text-[14px] font-semibold text-navy-900 capitalize">{drawerView}</span>
+                    <button
+                      onClick={() => setDrawerView(null)}
+                      className="text-[14px] text-slate-400 hover:text-navy-900 p-1 rounded-md hover:bg-slate-100"
+                    >
+                      ✕
+                    </button>
+                  </div>
+                  <div className="p-5">
+                    {drawerView === "blocks" && (
+                      <BlockManager state={state} onChange={onChange} compact />
+                    )}
+                    {drawerView === "aircraft" && (
+                      <AircraftManager state={state} onChange={onChange} compact />
+                    )}
+                    {drawerView === "flyers" && (
+                      <FlyersView state={state} onChange={onChange} compact />
+                    )}
+                  </div>
+                </aside>
+              </>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* ============================= SCHEDULER GRID ============================= */
+
+function SchedulerGrid({
+  state,
+  onChange,
+  selectedBlockId,
+  onBlockHeaderClick,
+  dayBlocks,
+  assignmentsByCell,
+  conflictingCells,
+  threepeatCells,
+  overfourCells,
+  onDrop,
+  onRemove,
+  onClearDay,
+  dayAssignmentsCount,
+}: {
+  state: AppState;
+  onChange: (next: AppState) => void;
+  selectedBlockId: string | null;
+  onBlockHeaderClick: (id: string) => void;
+  dayBlocks: Block[];
+  assignmentsByCell: Map<string, Assignment>;
+  conflictingCells: Set<string>;
+  threepeatCells: Set<string>;
+  overfourCells: Set<string>;
+  onDrop: (flyerId: string, acId: string, blockId: string) => void;
+  onRemove: (acId: string, blockId: string, role: "pilot" | "coPilot" | "both") => void;
+  onClearDay: () => void;
+  dayAssignmentsCount: number;
+}) {
+  const [missionEditCell, setMissionEditCell] = useState<string | null>(null);
+  const [missionDraft, setMissionDraft] = useState("");
+  const [areaEditCell, setAreaEditCell] = useState<string | null>(null);
+  const [areaDraft, setAreaDraft] = useState("");
+
+  return (
+    <Card className="p-4 overflow-hidden">
+      <div className="flex items-center justify-between mb-3">
+        <div className="flex items-center gap-2 text-[12px] text-slate-500">
+          <span className="font-mono text-[11px] px-1.5 py-0.5 bg-navy-900 text-white rounded">SCHEDULE</span>
+        </div>
+        <Button variant="secondary" size="sm" onClick={onClearDay}>Clear day</Button>
+      </div>
+
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-[700px] border-separate border-spacing-1.5">
+          <thead>
+            <tr>
+              <th className="w-44 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-400 py-2 px-2">
+                Aircraft
+              </th>
+              {dayBlocks.map((block) => {
+                const isSelected = selectedBlockId === block.id;
+                return (
+                  <th
+                    key={block.id}
+                    onClick={() => onBlockHeaderClick(block.id)}
+                    className={`text-center text-[11px] font-semibold uppercase tracking-wider py-2 px-1 cursor-pointer transition ${
+                      isSelected
+                        ? "bg-sky-100 text-sky-700 rounded-t-lg"
+                        : "text-slate-400 hover:bg-slate-50"
+                    }`}
+                    title="Click to filter roster to available flyers"
+                  >
+                    <div className={`font-mono text-[13px] ${isSelected ? "text-sky-800" : "text-navy-900"}`}>{block.start}</div>
+                    <div className="text-[10px] font-normal opacity-70">to {block.end}</div>
+                    {isSelected && <div className="text-[9px] mt-0.5 font-medium text-sky-600">selected</div>}
+                  </th>
+                );
+              })}
+            </tr>
+          </thead>
+          <tbody>
+            {state.aircraft.map((ac) => (
+              <tr key={ac.id}>
+                <td className="py-1.5 px-2 align-middle">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-lg bg-navy-900 text-white flex items-center justify-center shrink-0">
+                      <PlaneIcon size={15} />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-[13px] font-mono font-semibold text-navy-900 truncate">{ac.tailNumber}</div>
+                      <div className="text-[11px] text-slate-500 truncate">{ac.type}</div>
+                    </div>
+                  </div>
+                </td>
+                {dayBlocks.map((block) => {
+                  const cellKey = `${ac.id}:${block.id}`;
+                  const assignment = assignmentsByCell.get(cellKey);
+                  const pilot = assignment?.pilotId
+                    ? state.users.find((u) => u.id === assignment.pilotId)
+                    : null;
+                  const coPilot = assignment?.coPilotId
+                    ? state.users.find((u) => u.id === assignment.coPilotId)
+                    : null;
+                  const acAvail = ac.availableBlockIds.includes(block.id);
+                  const isSelectedCol = selectedBlockId === block.id;
+                  const isFull = !!pilot && !!coPilot;
+                  const isConflict = assignment && conflictingCells.has(cellKey);
+                  const isThreepeat = !isConflict && assignment && threepeatCells.has(cellKey);
+                  const isOverfour = !isConflict && !isThreepeat && assignment && overfourCells.has(cellKey);
+                  return (
+                    <td key={block.id} className="py-1">
+                      <div
+                        onDragOver={(e) => {
+                          if (!acAvail || isFull) return;
+                          e.preventDefault();
+                          e.dataTransfer.dropEffect = "move";
+                        }}
+                        onDrop={(e) => {
+                          e.preventDefault();
+                          const fid = e.dataTransfer.getData("text/plain");
+                          if (fid) onDrop(fid, ac.id, block.id);
+                        }}
+                        className={`h-24 rounded-lg border transition-all flex flex-col p-1.5 ${
+                          isConflict
+                            ? "bg-red-50 border-red-400 ring-1 ring-red-400"
+                            : isThreepeat
+                            ? "bg-amber-50 border-amber-400 ring-1 ring-amber-400"
+                            : isOverfour
+                            ? "bg-rose-50 border-rose-400 ring-1 ring-rose-400"
+                            : !acAvail
+                            ? "bg-slate-50/50 border-dashed border-slate-200 cursor-not-allowed"
+                            : isFull
+                            ? "bg-gradient-to-br from-navy-800 to-navy-900 border-navy-900 text-white"
+                            : pilot
+                            ? "bg-sky-50 border-sky-300"
+                            : coPilot && !pilot
+                            ? "bg-violet-50 border-violet-300"
+                            : isSelectedCol
+                            ? "bg-sky-50/70 border-sky-400 border-dashed"
+                            : "bg-white border-slate-200 hover:border-sky-300 hover:bg-sky-50/30"
+                        }`}
+                      >
+                        {pilot ? (
+                          <div className="flex-1 flex flex-col justify-center">
+                            <div className="flex items-center gap-1.5">
+                              <Pill tone="navy" className="text-[9px] py-0 px-1">PIC</Pill>
+                              <span className="text-[11.5px] font-semibold truncate flex-1">
+                                {pilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{pilot.rank}</span>}
+                                {pilot.name.split(" ")[0]}
+                              </span>
+                              {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
+                              {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
+                              {isOverfour && <span className="text-[9px] text-rose-600 font-bold ml-auto" title="4+ flights in a day (SOP violation)">◎</span>}
+                              <button
+                                onClick={() => onRemove(ac.id, block.id, "pilot")}
+                                className="text-[10px] text-slate-400 hover:text-red-400 ml-1"
+                                title="Remove pilot"
+                              >
+                                ✕
+                              </button>
+                            </div>
+                            {coPilot ? (
+                              <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-white/20">
+                                <Pill tone="sky" className="text-[9px] py-0 px-1">CP</Pill>
+                                <span className="text-[11.5px] font-medium truncate flex-1">
+                                  {coPilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{coPilot.rank}</span>}
+                                  {coPilot.name.split(" ")[0]}
+                                </span>
+                                {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
+                                {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
+                                {isOverfour && <span className="text-[9px] text-rose-600 font-bold ml-auto" title="4+ flights in a day (SOP violation)">◎</span>}
+                                <button
+                                  onClick={() => onRemove(ac.id, block.id, "coPilot")}
+                                  className="text-[10px] text-slate-400 hover:text-red-400 ml-1"
+                                  title="Remove co-pilot"
+                                >
+                                  ✕
+                                </button>
+                              </div>
+                            ) : (
+                              <div
+                                onDragOver={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  e.dataTransfer.dropEffect = "move";
+                                }}
+                                onDrop={(e) => {
+                                  e.stopPropagation();
+                                  e.preventDefault();
+                                  const fid = e.dataTransfer.getData("text/plain");
+                                  if (fid) onDrop(fid, ac.id, block.id);
+                                }}
+                                className="mt-1.5 h-6 rounded border border-dashed border-sky-300/50 flex items-center justify-center text-[9px] text-sky-600/70 hover:bg-sky-100/50 cursor-pointer"
+                              >
+                                + drop CP
+                              </div>
+                            )}
+                            {missionEditCell === cellKey ? (
+                              <input
+                                autoFocus
+                                value={missionDraft}
+                                onChange={(e) => setMissionDraft(e.target.value)}
+                                onBlur={() => {
+                                  setMissionEditCell(null);
+                                  if (!missionDraft.trim()) return;
+                                  onChange({ ...state, assignments: state.assignments.map((a) =>
+                                    a.id === assignment!.id ? { ...a, mission: missionDraft.trim() } : a
+                                  )});
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                  if (e.key === "Escape") setMissionEditCell(null);
+                                }}
+                                className="mt-1 w-full text-[10px] px-1 py-0.5 rounded border border-sky-400 bg-sky-50 text-sky-800 outline-none"
+                                placeholder="e.g. NAV 1"
+                              />
+                            ) : assignment!.mission ? (
+                              <button
+                                onClick={() => { setMissionEditCell(cellKey); setMissionDraft(assignment!.mission!); }}
+                                className="group mt-1 flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-700"
+                              >
+                                <span className="font-medium">MSN: {assignment!.mission}</span>
+                                <span className="opacity-0 group-hover:opacity-100 transition text-sky-400">✎</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => { setMissionEditCell(cellKey); setMissionDraft(""); }}
+                                className="group mt-1 flex items-center gap-1 text-[10px] text-slate-400 hover:text-sky-600"
+                              >
+                                <span className="opacity-0 group-hover:opacity-100 transition">+ mission</span>
+                              </button>
+                            )}
+                            {areaEditCell === cellKey ? (
+                              <input
+                                autoFocus
+                                value={areaDraft}
+                                onChange={(e) => setAreaDraft(e.target.value)}
+                                onBlur={() => {
+                                  setAreaEditCell(null);
+                                  if (!areaDraft.trim()) return;
+                                  onChange({ ...state, assignments: state.assignments.map((a) =>
+                                    a.id === assignment!.id ? { ...a, areaAssignment: areaDraft.trim() } : a
+                                  )});
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                  if (e.key === "Escape") setAreaEditCell(null);
+                                }}
+                                className="mt-1 w-full text-[10px] px-1 py-0.5 rounded border border-sky-400 bg-sky-50 text-sky-800 outline-none"
+                                placeholder="e.g. AA-1"
+                              />
+                            ) : assignment!.areaAssignment ? (
+                              <button
+                                onClick={() => { setAreaEditCell(cellKey); setAreaDraft(assignment!.areaAssignment!); }}
+                                className="group mt-1 flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-700"
+                              >
+                                <span className="font-medium">AA: {assignment!.areaAssignment}</span>
+                                <span className="opacity-0 group-hover:opacity-100 transition text-sky-400">✎</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => { setAreaEditCell(cellKey); setAreaDraft(""); }}
+                                className="group mt-1 flex items-center gap-1 text-[10px] text-slate-400 hover:text-sky-600"
+                              >
+                                <span className="opacity-0 group-hover:opacity-100 transition">+ AA</span>
+                              </button>
+                            )}
                           </div>
-                          <div className="min-w-0">
-                            <div className="text-[13px] font-mono font-semibold text-navy-900 truncate">{ac.tailNumber}</div>
-                            <div className="text-[11px] text-slate-500 truncate">{ac.type}</div>
-                          </div>
-                        </div>
-                      </td>
-                      {dayBlocks.map((block) => {
-                        const cellKey = `${ac.id}:${block.id}`;
-                        const assignment = assignmentsByCell.get(cellKey);
-                        const pilot = assignment?.pilotId
-                          ? state.users.find((u) => u.id === assignment.pilotId)
-                          : null;
-                        const coPilot = assignment?.coPilotId
-                          ? state.users.find((u) => u.id === assignment.coPilotId)
-                          : null;
-                        const acAvail = ac.availableBlockIds.includes(block.id);
-                        const isSelectedCol = selectedBlockId === block.id;
-                        const isFull = !!pilot && !!coPilot;
-                        const isConflict = assignment && conflictingCells.has(cellKey);
-                        const isThreepeat = !isConflict && assignment && threepeatCells.has(cellKey);
-                        const isOverfour = !isConflict && !isThreepeat && assignment && overfourCells.has(cellKey);
-                        return (
-                          <td key={block.id} className="py-1">
+                        ) : coPilot ? (
+                          <div className="flex-1 flex flex-col justify-center">
+                            <div className="flex items-center gap-1.5">
+                              <Pill tone="sky" className="text-[9px] py-0 px-1">CP</Pill>
+                              <span className="text-[11.5px] font-medium truncate flex-1">
+                                {coPilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{coPilot.rank}</span>}
+                                {coPilot.name.split(" ")[0]}
+                              </span>
+                              {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
+                              {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
+                              {isOverfour && <span className="text-[9px] text-rose-600 font-bold ml-auto" title="4+ flights in a day (SOP violation)">◎</span>}
+                              <button
+                                onClick={() => onRemove(ac.id, block.id, "coPilot")}
+                                className="text-[10px] text-slate-400 hover:text-red-400 ml-1"
+                                title="Remove co-pilot"
+                              >
+                                ✕
+                              </button>
+                            </div>
                             <div
                               onDragOver={(e) => {
-                                if (!acAvail || isFull) return;
+                                e.stopPropagation();
                                 e.preventDefault();
                                 e.dataTransfer.dropEffect = "move";
                               }}
                               onDrop={(e) => {
+                                e.stopPropagation();
                                 e.preventDefault();
                                 const fid = e.dataTransfer.getData("text/plain");
-                                if (fid) performDrop(fid, ac.id, block.id);
+                                if (fid) onDrop(fid, ac.id, block.id);
                               }}
-                              className={`h-24 rounded-lg border transition-all flex flex-col p-1.5 ${
-                                isConflict
-                                  ? "bg-red-50 border-red-400 ring-1 ring-red-400"
-                                  : isThreepeat
-                                  ? "bg-amber-50 border-amber-400 ring-1 ring-amber-400"
-                                  : isOverfour
-                                  ? "bg-rose-50 border-rose-400 ring-1 ring-rose-400"
-                                  : !acAvail
-                                  ? "bg-slate-50/50 border-dashed border-slate-200 cursor-not-allowed"
-                                  : isFull
-                                  ? "bg-gradient-to-br from-navy-800 to-navy-900 border-navy-900 text-white"
-                                  : pilot
-                                  ? "bg-sky-50 border-sky-300"
-                                  : coPilot && !pilot
-                                  ? "bg-violet-50 border-violet-300"
-                                  : isSelectedCol
-                                  ? "bg-sky-50/70 border-sky-400 border-dashed"
-                                  : "bg-white border-slate-200 hover:border-sky-300 hover:bg-sky-50/30"
-                              }`}
+                              className="mt-1.5 h-6 rounded border border-dashed border-amber-300/50 bg-amber-50/50 flex items-center justify-center text-[9px] text-amber-600/70 hover:bg-amber-100/50 cursor-pointer"
                             >
-                              {pilot ? (
-                                <div className="flex-1 flex flex-col justify-center">
-                                  <div className="flex items-center gap-1.5">
-                                    <Pill tone="navy" className="text-[9px] py-0 px-1">PIC</Pill>
-                                    <span className="text-[11.5px] font-semibold truncate flex-1">
-                                      {pilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{pilot.rank}</span>}
-                                      {pilot.name.split(" ")[0]}
-                                    </span>
-                                    {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
-                                    {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
-                                    {isOverfour && <span className="text-[9px] text-rose-600 font-bold ml-auto" title="4+ flights in a day (SOP violation)">◎</span>}
-                                    <button
-                                      onClick={() => removeFromCell(ac.id, block.id, "pilot")}
-                                      className="text-[10px] text-slate-400 hover:text-red-400 ml-1"
-                                      title="Remove pilot"
-                                    >
-                                      ✕
-                                    </button>
-                                  </div>
-                                  {coPilot ? (
-                                    <div className="flex items-center gap-1.5 mt-1 pt-1 border-t border-white/20">
-                                      <Pill tone="sky" className="text-[9px] py-0 px-1">CP</Pill>
-                                      <span className="text-[11.5px] font-medium truncate flex-1">
-                                        {coPilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{coPilot.rank}</span>}
-                                        {coPilot.name.split(" ")[0]}
-                                      </span>
-                                    {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
-                                    {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
-                                    {isOverfour && <span className="text-[9px] text-rose-600 font-bold ml-auto" title="4+ flights in a day (SOP violation)">◎</span>}
-                                      <button
-                                        onClick={() => removeFromCell(ac.id, block.id, "coPilot")}
-                                        className="text-[10px] text-slate-400 hover:text-red-400 ml-1"
-                                        title="Remove co-pilot"
-                                      >
-                                        ✕
-                                      </button>
-                                    </div>
-                                  ) : (
-                                    <div
-                                      onDragOver={(e) => {
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        e.dataTransfer.dropEffect = "move";
-                                      }}
-                                      onDrop={(e) => {
-                                        e.stopPropagation();
-                                        e.preventDefault();
-                                        const fid = e.dataTransfer.getData("text/plain");
-                                        if (fid) performDrop(fid, ac.id, block.id);
-                                      }}
-                                      className="mt-1.5 h-6 rounded border border-dashed border-sky-300/50 flex items-center justify-center text-[9px] text-sky-600/70 hover:bg-sky-100/50 cursor-pointer"
-                                    >
-                                      + drop CP
-                                    </div>
-                                  )}
-                                  {missionEditCell === cellKey ? (
-                                    <input
-                                      autoFocus
-                                      value={missionDraft}
-                                      onChange={(e) => setMissionDraft(e.target.value)}
-                                      onBlur={() => {
-                                        setMissionEditCell(null);
-                                        if (!missionDraft.trim()) return;
-                                        onChange({
-                                          ...state,
-                                          assignments: state.assignments.map((a) =>
-                                            a.id === assignment!.id ? { ...a, mission: missionDraft.trim() } : a
-                                          ),
-                                        });
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                                        if (e.key === "Escape") setMissionEditCell(null);
-                                      }}
-                                      className="mt-1 w-full text-[10px] px-1 py-0.5 rounded border border-sky-400 bg-sky-50 text-sky-800 outline-none"
-                                      placeholder="e.g. NAV 1"
-                                    />
-                                  ) : assignment!.mission ? (
-                                    <button
-                                      onClick={() => { setMissionEditCell(cellKey); setMissionDraft(assignment!.mission!); }}
-                                      className="group mt-1 flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-700"
-                                    >
-                                      <span className="font-medium">MSN: {assignment!.mission}</span>
-                                      <span className="opacity-0 group-hover:opacity-100 transition text-sky-400">✎</span>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => { setMissionEditCell(cellKey); setMissionDraft(""); }}
-                                      className="group mt-1 flex items-center gap-1 text-[10px] text-slate-400 hover:text-sky-600"
-                                    >
-                                      <span className="opacity-0 group-hover:opacity-100 transition">+ mission</span>
-                                    </button>
-                                  )}
-                                  {areaEditCell === cellKey ? (
-                                    <input
-                                      autoFocus
-                                      value={areaDraft}
-                                      onChange={(e) => setAreaDraft(e.target.value)}
-                                      onBlur={() => {
-                                        setAreaEditCell(null);
-                                        if (!areaDraft.trim()) return;
-                                        onChange({
-                                          ...state,
-                                          assignments: state.assignments.map((a) =>
-                                            a.id === assignment!.id ? { ...a, areaAssignment: areaDraft.trim() } : a
-                                          ),
-                                        });
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                                        if (e.key === "Escape") setAreaEditCell(null);
-                                      }}
-                                      className="mt-1 w-full text-[10px] px-1 py-0.5 rounded border border-sky-400 bg-sky-50 text-sky-800 outline-none"
-                                      placeholder="e.g. AA-1"
-                                    />
-                                  ) : assignment!.areaAssignment ? (
-                                    <button
-                                      onClick={() => { setAreaEditCell(cellKey); setAreaDraft(assignment!.areaAssignment!); }}
-                                      className="group mt-1 flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-700"
-                                    >
-                                      <span className="font-medium">AA: {assignment!.areaAssignment}</span>
-                                      <span className="opacity-0 group-hover:opacity-100 transition text-sky-400">✎</span>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => { setAreaEditCell(cellKey); setAreaDraft(""); }}
-                                      className="group mt-1 flex items-center gap-1 text-[10px] text-slate-400 hover:text-sky-600"
-                                    >
-                                      <span className="opacity-0 group-hover:opacity-100 transition">+ AA</span>
-                                    </button>
-                                  )}
-                                </div>
-                              ) : coPilot ? (
-                                <div className="flex-1 flex flex-col justify-center">
-                                  <div className="flex items-center gap-1.5">
-                                    <Pill tone="sky" className="text-[9px] py-0 px-1">CP</Pill>
-                                    <span className="text-[11.5px] font-medium truncate flex-1">
-                                      {coPilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{coPilot.rank}</span>}
-                                      {coPilot.name.split(" ")[0]}
-                                    </span>
-                                    {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
-                                    {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
-                                    {isOverfour && <span className="text-[9px] text-rose-600 font-bold ml-auto" title="4+ flights in a day (SOP violation)">◎</span>}
-                                    <button
-                                      onClick={() => removeFromCell(ac.id, block.id, "coPilot")}
-                                      className="text-[10px] text-slate-400 hover:text-red-400 ml-1"
-                                      title="Remove co-pilot"
-                                    >
-                                      ✕
-                                    </button>
-                                  </div>
-                                  <div
-                                    onDragOver={(e) => {
-                                      e.stopPropagation();
-                                      e.preventDefault();
-                                      e.dataTransfer.dropEffect = "move";
-                                    }}
-                                    onDrop={(e) => {
-                                      e.stopPropagation();
-                                      e.preventDefault();
-                                      const fid = e.dataTransfer.getData("text/plain");
-                                      if (fid) performDrop(fid, ac.id, block.id);
-                                    }}
-                                    className="mt-1.5 h-6 rounded border border-dashed border-amber-300/50 bg-amber-50/50 flex items-center justify-center text-[9px] text-amber-600/70 hover:bg-amber-100/50 cursor-pointer"
-                                  >
-                                    + drop PIC
-                                  </div>
-                                  {missionEditCell === cellKey ? (
-                                    <input
-                                      autoFocus
-                                      value={missionDraft}
-                                      onChange={(e) => setMissionDraft(e.target.value)}
-                                      onBlur={() => {
-                                        setMissionEditCell(null);
-                                        if (!missionDraft.trim()) return;
-                                        onChange({
-                                          ...state,
-                                          assignments: state.assignments.map((a) =>
-                                            a.id === assignment!.id ? { ...a, mission: missionDraft.trim() } : a
-                                          ),
-                                        });
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                                        if (e.key === "Escape") setMissionEditCell(null);
-                                      }}
-                                      className="mt-1 w-full text-[10px] px-1 py-0.5 rounded border border-sky-400 bg-sky-50 text-sky-800 outline-none"
-                                      placeholder="e.g. NAV 1"
-                                    />
-                                  ) : assignment!.mission ? (
-                                    <button
-                                      onClick={() => { setMissionEditCell(cellKey); setMissionDraft(assignment!.mission!); }}
-                                      className="group mt-1 flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-700"
-                                    >
-                                      <span className="font-medium">MSN: {assignment!.mission}</span>
-                                      <span className="opacity-0 group-hover:opacity-100 transition text-sky-400">✎</span>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => { setMissionEditCell(cellKey); setMissionDraft(""); }}
-                                      className="group mt-1 flex items-center gap-1 text-[10px] text-slate-400 hover:text-sky-600"
-                                    >
-                                      <span className="opacity-0 group-hover:opacity-100 transition">+ mission</span>
-                                    </button>
-                                  )}
-                                  {areaEditCell === cellKey ? (
-                                    <input
-                                      autoFocus
-                                      value={areaDraft}
-                                      onChange={(e) => setAreaDraft(e.target.value)}
-                                      onBlur={() => {
-                                        setAreaEditCell(null);
-                                        if (!areaDraft.trim()) return;
-                                        onChange({
-                                          ...state,
-                                          assignments: state.assignments.map((a) =>
-                                            a.id === assignment!.id ? { ...a, areaAssignment: areaDraft.trim() } : a
-                                          ),
-                                        });
-                                      }}
-                                      onKeyDown={(e) => {
-                                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                                        if (e.key === "Escape") setAreaEditCell(null);
-                                      }}
-                                      className="mt-1 w-full text-[10px] px-1 py-0.5 rounded border border-sky-400 bg-sky-50 text-sky-800 outline-none"
-                                      placeholder="e.g. AA-1"
-                                    />
-                                  ) : assignment!.areaAssignment ? (
-                                    <button
-                                      onClick={() => { setAreaEditCell(cellKey); setAreaDraft(assignment!.areaAssignment!); }}
-                                      className="group mt-1 flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-700"
-                                    >
-                                      <span className="font-medium">AA: {assignment!.areaAssignment}</span>
-                                      <span className="opacity-0 group-hover:opacity-100 transition text-sky-400">✎</span>
-                                    </button>
-                                  ) : (
-                                    <button
-                                      onClick={() => { setAreaEditCell(cellKey); setAreaDraft(""); }}
-                                      className="group mt-1 flex items-center gap-1 text-[10px] text-slate-400 hover:text-sky-600"
-                                    >
-                                      <span className="opacity-0 group-hover:opacity-100 transition">+ AA</span>
-                                    </button>
-                                  )}
-                                </div>
-                              ) : acAvail ? (
-                                <div className="flex-1 flex items-center justify-center text-[10.5px] text-slate-300 uppercase tracking-wider">
-                                  drop PIC
-                                </div>
-                              ) : (
-                                <div className="flex-1 flex items-center justify-center text-[10.5px] text-slate-300">
-                                  —
-                                </div>
-                              )}
+                              + drop PIC
                             </div>
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between text-[12px] text-slate-500 px-2 flex-wrap gap-2">
-              <div className="flex items-center gap-4">
-                <LegendDot color="bg-navy-900" label="Full crew (PIC + CP)" />
-                <LegendDot color="bg-sky-50 border border-sky-300" label="Pilot only" />
-                <LegendDot color="bg-slate-50 border border-dashed border-slate-300" label="Aircraft unavailable" />
-              </div>
-              <div className="font-mono">{dayAssignments.length} crew pairs assigned</div>
-            </div>
-          </Card>
-
-          {/* Roster */}
-          <Card className={`p-4 h-fit xl:sticky xl:top-24 ${!rosterOpen ? "xl:col-span-1" : ""}`}>
-            <div className="flex items-center justify-between mb-2">
-              <SectionTitle
-                title={selectedBlock ? `Available for ${selectedBlock.start}–${selectedBlock.end}` : "Roster"}
-                subtitle={
-                  selectedBlock
-                    ? `${filteredFlyers.length} of ${state.users.filter((u) => u.role === "flyer").length} flyers can fly this block`
-                    : "Click a block time to filter, or drag any pilot onto a cell"
-                }
-              />
-              <button
-                onClick={() => setRosterOpen(!rosterOpen)}
-                className="text-[11px] text-slate-400 hover:text-navy-900 shrink-0 ml-2"
-                title={rosterOpen ? "Collapse roster" : "Expand roster"}
-              >
-                {rosterOpen ? "▸" : "◂"}
-              </button>
-            </div>
-            {rosterOpen && (
-              <>
-                {/* Track filter tabs */}
-                <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg mb-3">
-                  {(["all", "student", "ip"] as const).map((t) => (
-                    <button
-                      key={t}
-                      onClick={() => setTrackFilter(t)}
-                      className={`flex-1 py-1 text-[11.5px] font-medium rounded-md transition ${
-                        trackFilter === t ? "bg-white text-navy-900 shadow-sm" : "text-slate-500"
-                      }`}
-                    >
-                      {t === "all" ? "All" : t === "student" ? "AS" : "IP"}
-                    </button>
-                  ))}
-                </div>
-                {selectedBlock && (
-                  <div className="mb-3 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <Pill tone="sky">{DAY_FULL[selectedBlock.day]} · {selectedBlock.start}–{selectedBlock.end}</Pill>
-                    </div>
-                    <button
-                      onClick={() => setSelectedBlockId(null)}
-                      className="text-[11px] text-slate-500 hover:text-navy-900 underline"
-                    >
-                      Show all flyers
-                    </button>
-                  </div>
-                )}
-                <Input
-                  placeholder="Search flyers..."
-                  value={filter}
-                  onChange={(e) => setFilter(e.target.value)}
-                  className="mb-3"
-                />
-                <div className="space-y-1.5 max-h-[520px] overflow-y-auto pr-1">
-                  {filteredFlyers.length === 0 ? (
-                    <p className="text-[12px] text-slate-400 text-center py-4">
-                      {selectedBlock
-                        ? "No flyers available for this block"
-                        : "No flyers match your search"}
-                    </p>
-                  ) : (
-                    filteredFlyers.map((f) => {
-                      const isAssigned = selectedBlock && assignedInBlock.has(f.id);
-                      return (
-                        <div
-                          key={f.id}
-                          draggable={!isAssigned}
-                          onDragStart={(e) => {
-                            if (isAssigned) return;
-                            e.dataTransfer.setData("text/plain", f.id);
-                            e.dataTransfer.effectAllowed = "move";
-                          }}
-                          className={`flex items-center gap-2.5 p-2 rounded-lg border transition ${
-                            isAssigned
-                              ? "border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed"
-                              : "border-sky-200 bg-sky-50 cursor-grab active:cursor-grabbing hover:border-sky-300"
-                          }`}
-                        >
-                          <div className="w-8 h-8 rounded-full bg-gradient-to-br from-navy-700 to-navy-900 text-white flex items-center justify-center text-[11px] font-semibold shrink-0">
-                            {f.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <div className="text-[12.5px] font-medium text-navy-900 truncate flex items-center gap-1.5">
-                              {f.rank && <span className="text-[11px] font-semibold text-sky-600">{f.rank}</span>}
-                              {f.name}
-                              {f.track === "student" && <span className="text-[9px] font-medium text-violet-600 bg-violet-50 px-1 rounded">AS</span>}
-                              {f.track === "ip" && (
-                                <>
-                                  <span className="text-[9px] font-medium text-amber-600 bg-amber-50 px-1 rounded">IP</span>
-                                  {f.qualification && <span className="text-[9px] font-mono text-slate-500 bg-slate-100 px-1 rounded">{f.qualification}</span>}
-                                </>
-                              )}
-                            </div>
-                            {f.callsign && (
-                              <div className="text-[10.5px] font-mono text-slate-400">{f.callsign}</div>
+                            {missionEditCell === cellKey ? (
+                              <input
+                                autoFocus
+                                value={missionDraft}
+                                onChange={(e) => setMissionDraft(e.target.value)}
+                                onBlur={() => {
+                                  setMissionEditCell(null);
+                                  if (!missionDraft.trim()) return;
+                                  onChange({ ...state, assignments: state.assignments.map((a) =>
+                                    a.id === assignment!.id ? { ...a, mission: missionDraft.trim() } : a
+                                  )});
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                  if (e.key === "Escape") setMissionEditCell(null);
+                                }}
+                                className="mt-1 w-full text-[10px] px-1 py-0.5 rounded border border-sky-400 bg-sky-50 text-sky-800 outline-none"
+                                placeholder="e.g. NAV 1"
+                              />
+                            ) : assignment!.mission ? (
+                              <button
+                                onClick={() => { setMissionEditCell(cellKey); setMissionDraft(assignment!.mission!); }}
+                                className="group mt-1 flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-700"
+                              >
+                                <span className="font-medium">MSN: {assignment!.mission}</span>
+                                <span className="opacity-0 group-hover:opacity-100 transition text-sky-400">✎</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => { setMissionEditCell(cellKey); setMissionDraft(""); }}
+                                className="group mt-1 flex items-center gap-1 text-[10px] text-slate-400 hover:text-sky-600"
+                              >
+                                <span className="opacity-0 group-hover:opacity-100 transition">+ mission</span>
+                              </button>
+                            )}
+                            {areaEditCell === cellKey ? (
+                              <input
+                                autoFocus
+                                value={areaDraft}
+                                onChange={(e) => setAreaDraft(e.target.value)}
+                                onBlur={() => {
+                                  setAreaEditCell(null);
+                                  if (!areaDraft.trim()) return;
+                                  onChange({ ...state, assignments: state.assignments.map((a) =>
+                                    a.id === assignment!.id ? { ...a, areaAssignment: areaDraft.trim() } : a
+                                  )});
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                  if (e.key === "Escape") setAreaEditCell(null);
+                                }}
+                                className="mt-1 w-full text-[10px] px-1 py-0.5 rounded border border-sky-400 bg-sky-50 text-sky-800 outline-none"
+                                placeholder="e.g. AA-1"
+                              />
+                            ) : assignment!.areaAssignment ? (
+                              <button
+                                onClick={() => { setAreaEditCell(cellKey); setAreaDraft(assignment!.areaAssignment!); }}
+                                className="group mt-1 flex items-center gap-1 text-[10px] text-sky-600 hover:text-sky-700"
+                              >
+                                <span className="font-medium">AA: {assignment!.areaAssignment}</span>
+                                <span className="opacity-0 group-hover:opacity-100 transition text-sky-400">✎</span>
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => { setAreaEditCell(cellKey); setAreaDraft(""); }}
+                                className="group mt-1 flex items-center gap-1 text-[10px] text-slate-400 hover:text-sky-600"
+                              >
+                                <span className="opacity-0 group-hover:opacity-100 transition">+ AA</span>
+                              </button>
                             )}
                           </div>
-                          {selectedBlock && isAssigned && <Pill tone="slate">Assigned</Pill>}
-                          {selectedBlock && !isAssigned && <Pill tone={f.track === "ip" ? "green" : "sky"}>{f.track === "ip" ? "PIC" : "CP"}</Pill>}
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-                {selectedBlock && (
-                  <div className="mt-3 pt-3 border-t border-slate-100 text-[11.5px] text-slate-500">
-                    <span className="text-sky-600 font-medium">{availableForBlock.size}</span> flyer
-                    {availableForBlock.size === 1 ? "" : "s"} have declared availability overlapping this block.
-                    <div className="mt-1.5 text-[11px]">
-                      <span className="text-slate-400">Tip:</span> First drop = Pilot (PIC), second drop = Co-Pilot (CP)
-                    </div>
-                  </div>
-                )}
-              </>
-            )}
-          </Card>
+                        ) : acAvail ? (
+                          <div className="flex-1 flex items-center justify-center text-[10.5px] text-slate-300 uppercase tracking-wider">
+                            drop PIC
+                          </div>
+                        ) : (
+                          <div className="flex-1 flex items-center justify-center text-[10.5px] text-slate-300">
+                            —
+                          </div>
+                        )}
+                      </div>
+                    </td>
+                  );
+                })}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-4 flex items-center justify-between text-[12px] text-slate-500 px-2 flex-wrap gap-2">
+        <div className="flex items-center gap-4">
+          <LegendDot color="bg-navy-900" label="Full crew (PIC + CP)" />
+          <LegendDot color="bg-sky-50 border border-sky-300" label="Pilot only" />
+          <LegendDot color="bg-slate-50 border border-dashed border-slate-300" label="Aircraft unavailable" />
         </div>
-      )}
-    </div>
+        <div className="font-mono">{dayAssignmentsCount} crew pairs assigned</div>
+      </div>
+    </Card>
   );
 }
 
@@ -861,6 +903,168 @@ function LegendDot({ color, label }: { color: string; label: string }) {
       <div className={`w-3 h-3 rounded ${color}`} />
       <span>{label}</span>
     </div>
+  );
+}
+
+/* ============================= ROSTER PANEL =============================== */
+
+function RosterPanel({
+  state,
+  selectedBlock,
+  onBlockFilter,
+  availableForBlock,
+}: {
+  state: AppState;
+  selectedBlock: Block | null;
+  onBlockFilter: (id: string | null) => void;
+  availableForBlock: Set<string>;
+}) {
+  const [filter, setFilter] = useState("");
+  const [trackFilter, setTrackFilter] = useState<"all" | "student" | "ip">("all");
+
+  const flyers = state.users.filter((u) => u.role === "flyer");
+  const q = filter.trim().toLowerCase();
+  let filtered = q
+    ? flyers.filter((f) => f.name.toLowerCase().includes(q) || f.callsign?.toLowerCase().includes(q))
+    : flyers;
+  if (trackFilter !== "all") filtered = filtered.filter((f) => f.track === trackFilter);
+  if (selectedBlock) filtered = filtered.filter((f) => availableForBlock.has(f.id));
+
+  const assignedInBlock = selectedBlock
+    ? new Set(
+        state.assignments
+          .filter((a) => a.blockId === selectedBlock.id)
+          .flatMap((a) => [a.pilotId, a.coPilotId])
+          .filter(Boolean)
+      )
+    : new Set<string>();
+
+  return (
+    <>
+      <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg mb-3">
+        {(["all", "student", "ip"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTrackFilter(t)}
+            className={`flex-1 py-1 text-[11.5px] font-medium rounded-md transition ${
+              trackFilter === t ? "bg-white text-navy-900 shadow-sm" : "text-slate-500"
+            }`}
+          >
+            {t === "all" ? "All" : t === "student" ? "AS" : "IP"}
+          </button>
+        ))}
+      </div>
+      {selectedBlock && (
+        <div className="mb-2 flex items-center justify-between">
+          <Pill tone="sky">{DAY_FULL[selectedBlock.day]} · {selectedBlock.start}–{selectedBlock.end}</Pill>
+          <button
+            onClick={() => onBlockFilter(null)}
+            className="text-[10px] text-slate-500 hover:text-navy-900 underline"
+          >
+            Clear
+          </button>
+        </div>
+      )}
+      <Input
+        placeholder="Search flyers..."
+        value={filter}
+        onChange={(e) => setFilter(e.target.value)}
+        className="mb-3"
+      />
+      <div className="space-y-1.5 max-h-[400px] overflow-y-auto pr-1">
+        {filtered.length === 0 ? (
+          <p className="text-[12px] text-slate-400 text-center py-4">
+            {selectedBlock ? "No flyers available" : "No flyers match your search"}
+          </p>
+        ) : (
+          filtered.map((f) => {
+            const isAssigned = assignedInBlock.has(f.id);
+            return (
+              <div
+                key={f.id}
+                draggable={!isAssigned}
+                onDragStart={(e) => {
+                  if (isAssigned) return;
+                  e.dataTransfer.setData("text/plain", f.id);
+                  e.dataTransfer.effectAllowed = "move";
+                }}
+                className={`flex items-center gap-2 p-2 rounded-lg border transition ${
+                  isAssigned
+                    ? "border-slate-200 bg-slate-50 opacity-50 cursor-not-allowed"
+                    : "border-sky-200 bg-sky-50 cursor-grab active:cursor-grabbing hover:border-sky-300"
+                }`}
+              >
+                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-navy-700 to-navy-900 text-white flex items-center justify-center text-[11px] font-semibold shrink-0">
+                  {f.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12px] font-medium text-navy-900 truncate flex items-center gap-1">
+                    {f.rank && <span className="text-[10px] font-semibold text-sky-600">{f.rank}</span>}
+                    {f.name.split(" ")[0]}
+                    {f.track === "student" && <span className="text-[8px] font-medium text-violet-600 bg-violet-50 px-1 rounded">AS</span>}
+                    {f.track === "ip" && (
+                      <>
+                        <span className="text-[8px] font-medium text-amber-600 bg-amber-50 px-1 rounded">IP</span>
+                        {f.qualification && <span className="text-[8px] font-mono text-slate-500 bg-slate-100 px-1 rounded">{f.qualification}</span>}
+                      </>
+                    )}
+                  </div>
+                  {f.callsign && <div className="text-[10px] font-mono text-slate-400">{f.callsign}</div>}
+                </div>
+                {selectedBlock && isAssigned && <Pill tone="slate" className="text-[9px]">Assigned</Pill>}
+                {selectedBlock && !isAssigned && <Pill tone={f.track === "ip" ? "green" : "sky"} className="text-[9px]">{f.track === "ip" ? "PIC" : "CP"}</Pill>}
+              </div>
+            );
+          })
+        )}
+      </div>
+    </>
+  );
+}
+
+/* ========================== SELECTED CELL PANEL =========================== */
+
+function SelectedCellPanel({
+  state,
+  selectedBlockId,
+}: {
+  state: AppState;
+  selectedBlockId: string;
+}) {
+  const block = state.blocks.find((b) => b.id === selectedBlockId);
+  if (!block) return null;
+
+  const relevant = state.assignments.filter((a) => a.blockId === selectedBlockId);
+
+  return (
+    <Card className="p-3">
+      <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
+        Selected block
+      </div>
+      <Pill tone="sky" className="mb-3">{block.start}–{block.end}</Pill>
+      {relevant.length === 0 ? (
+        <p className="text-[11px] text-slate-400">No assignments for this block.</p>
+      ) : (
+        <div className="space-y-2">
+          {relevant.map((a) => {
+            const ac = state.aircraft.find((x) => x.id === a.aircraftId);
+            const pilot = a.pilotId ? state.users.find((u) => u.id === a.pilotId) : null;
+            const coPilot = a.coPilotId ? state.users.find((u) => u.id === a.coPilotId) : null;
+            return (
+              <div key={a.id} className="text-[12px] border border-slate-100 rounded-lg p-2">
+                {ac && <div className="font-mono font-semibold text-navy-900">{ac.tailNumber}</div>}
+                <div className="text-slate-500 mt-0.5">
+                  {pilot && <span>PIC: {pilot.name.split(" ")[0]}</span>}
+                  {coPilot && <span> {pilot ? "+" : "CP:"} {coPilot.name.split(" ")[0]}</span>}
+                </div>
+                {a.mission && <div className="text-[10px] text-sky-600 mt-0.5">MSN: {a.mission}</div>}
+                {a.areaAssignment && <div className="text-[10px] text-sky-600">AA: {a.areaAssignment}</div>}
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
   );
 }
 
@@ -875,7 +1079,7 @@ function addMinutes(time: string, mins: number) {
   return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
 }
 
-function BlockManager({ state, onChange }: Props) {
+function BlockManager({ state, onChange, compact }: Props & { compact?: boolean }) {
   const [day, setDay] = useState(new Date().getDay());
   const [start, setStart] = useState("06:00");
   const [end, setEnd] = useState("09:00");
@@ -942,11 +1146,11 @@ function BlockManager({ state, onChange }: Props) {
     .sort((a, b) => a.start.localeCompare(b.start));
 
   return (
-    <div className="grid md:grid-cols-3 gap-6">
-      <Card className="p-6">
+    <div className={compact ? "space-y-5" : "grid md:grid-cols-3 gap-6"}>
+      <Card className={compact ? "p-4" : "p-6"}>
         <SectionTitle
           title="Add block time"
-          subtitle="Define operating windows for the day."
+          subtitle={compact ? "" : "Define operating windows for the day."}
         />
         <div className="space-y-3">
           <div>
@@ -995,11 +1199,11 @@ function BlockManager({ state, onChange }: Props) {
         </div>
       </Card>
 
-      <Card className="p-6 md:col-span-2">
+      <Card className={compact ? "p-4" : "p-6 md:col-span-2"}>
         <div className="flex items-center justify-between mb-4">
           <SectionTitle
             title="Blocks for the day"
-            subtitle={`${blocksForDay.length} block${blocksForDay.length === 1 ? "" : "s"} configured`}
+            subtitle={compact ? undefined : `${blocksForDay.length} block${blocksForDay.length === 1 ? "" : "s"} configured`}
           />
           <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
             {DAY_LABELS.map((d, i) => (
@@ -1088,7 +1292,7 @@ function blockAircraftCount(blockId: string, state: AppState) {
 /* ============================= AIRCRAFT MANAGER =========================== */
 /* Each aircraft picks which blocks (across all days) it is available for.   */
 
-function AircraftManager({ state, onChange }: Props) {
+function AircraftManager({ state, onChange, compact }: Props & { compact?: boolean }) {
   const [tail, setTail] = useState("");
   const [type, setType] = useState("");
   const [avail, setAvail] = useState<string[]>([]);
@@ -1151,9 +1355,9 @@ function AircraftManager({ state, onChange }: Props) {
   }
 
   return (
-    <div className="grid md:grid-cols-3 gap-6">
-      <Card className="p-6">
-        <SectionTitle title="Add aircraft" subtitle="Tail, type & available blocks" />
+    <div className={compact ? "space-y-5" : "grid md:grid-cols-3 gap-6"}>
+      <Card className={compact ? "p-4" : "p-6"}>
+        <SectionTitle title="Add aircraft" subtitle={compact ? undefined : "Tail, type & available blocks"} />
         <div className="space-y-3">
           <div>
             <Label>Tail number</Label>
@@ -1177,8 +1381,8 @@ function AircraftManager({ state, onChange }: Props) {
         </div>
       </Card>
 
-      <Card className="p-6 md:col-span-2">
-        <SectionTitle title="Fleet" subtitle="Click a block chip to toggle an aircraft's availability." />
+      <Card className={compact ? "p-4" : "p-6 md:col-span-2"}>
+        <SectionTitle title="Fleet" subtitle={compact ? undefined : "Click a block chip to toggle an aircraft's availability."} />
         <div className="space-y-3">
           {state.aircraft.length === 0 ? (
             <p className="text-[13px] text-slate-500 py-6 text-center">No aircraft added yet.</p>
@@ -1245,7 +1449,7 @@ function BlockPicker({
   if (blocks.length === 0) {
     return (
       <p className="text-[12px] text-slate-500 p-3 bg-slate-50 border border-dashed border-slate-200 rounded-lg">
-        No block times defined yet. Create some in the Block times tab.
+        No block times defined yet. Open "Blocks" to create some.
       </p>
     );
   }
@@ -1286,101 +1490,12 @@ function BlockPicker({
   );
 }
 
-/* ================================= OVERVIEW =============================== */
-
-function Overview({ state, onJump }: { state: AppState; onJump: (t: Tab) => void }) {
-  const flyers = state.users.filter((u) => u.role === "flyer");
-  const totalBlocks = state.blocks.length;
-  const totalAssignments = state.assignments.length;
-  const today = new Date().getDay();
-  const todayAssignments = state.assignments.filter((a) => {
-    const b = state.blocks.find((x) => x.id === a.blockId);
-    return b?.day === today;
-  });
-
-  return (
-    <div className="space-y-6">
-      <Card className="p-6 bg-gradient-to-br from-navy-900 via-navy-800 to-navy-900 text-white border-0 relative overflow-hidden">
-        <div className="absolute inset-0 bg-cockpit-grid opacity-40" />
-        <div className="absolute -right-20 -top-20 w-80 h-80 bg-sky-500/20 rounded-full blur-3xl" />
-        <div className="relative">
-          <div className="text-[11px] font-mono text-sky-300 uppercase tracking-wider mb-2">
-            · Ops Brief ·
-          </div>
-          <h2 className="text-3xl font-semibold tracking-tight">Today's plan, chief.</h2>
-          <p className="text-white/65 mt-2 max-w-xl text-[14px]">
-            Set daily block times, enable aircraft, then assign Pilot + Co-Pilot pairs.
-          </p>
-          <div className="flex flex-wrap gap-2 mt-6">
-            <button onClick={() => onJump("blocks")} className="px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-[13px] font-medium backdrop-blur">1 · Define today's blocks</button>
-            <button onClick={() => onJump("aircraft")} className="px-3.5 py-2 rounded-lg bg-white/10 hover:bg-white/15 text-[13px] font-medium backdrop-blur">2 · Enable aircraft</button>
-            <button onClick={() => onJump("schedule")} className="px-3.5 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-white text-[13px] font-semibold shadow-lg">3 · Open scheduler →</button>
-          </div>
-        </div>
-      </Card>
-
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Stat label="Flyers"      value={flyers.length} />
-        <Stat label="Aircraft"    value={state.aircraft.length} />
-        <Stat label="Total blocks" value={totalBlocks} hint="across the week" />
-        <Stat label="Crew pairs"   value={totalAssignments} hint={`${todayAssignments.length} today`} tone="sky" />
-      </div>
-
-      <div className="grid md:grid-cols-2 gap-6">
-        <Card className="p-6">
-          <SectionTitle title="Today's roster" subtitle={DAY_FULL[today]} />
-          {todayAssignments.length === 0 ? (
-            <p className="text-[13px] text-slate-500 py-6 text-center">No sorties rostered for today.</p>
-          ) : (
-            <div className="space-y-2">
-              {todayAssignments.map((a) => {
-                const block = state.blocks.find((b) => b.id === a.blockId);
-                const ac = state.aircraft.find((x) => x.id === a.aircraftId);
-                const pilot = state.users.find((u) => u.id === a.pilotId);
-                const coPilot = a.coPilotId ? state.users.find((u) => u.id === a.coPilotId) : null;
-                if (!block || !ac || !pilot) return null;
-                return (
-                  <div key={a.id} className="flex items-center gap-3 p-3 rounded-lg bg-slate-50 border border-slate-100">
-                    <div className="font-mono text-[12px] text-slate-500 w-16">{block.start}</div>
-                    <div className="flex-1">
-                      <div className="text-[13px] font-medium text-navy-900">{pilot.name}</div>
-                      {coPilot && <div className="text-[11px] text-slate-500">+ {coPilot.name}</div>}
-                    </div>
-                    <div className="text-[12px] font-mono text-slate-500">{ac.tailNumber}</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </Card>
-        <Card className="p-6">
-          <SectionTitle title="Fleet status" />
-          <div className="space-y-2">
-            {state.aircraft.map((ac) => (
-              <div key={ac.id} className="flex items-center gap-3 p-3 rounded-lg border border-slate-200">
-                <div className="w-10 h-10 rounded-lg bg-navy-900 text-white flex items-center justify-center">
-                  <PlaneIcon size={16} />
-                </div>
-                <div className="flex-1">
-                  <div className="text-[13.5px] font-semibold text-navy-900 font-mono">{ac.tailNumber}</div>
-                  <div className="text-[12px] text-slate-500">{ac.type}</div>
-                </div>
-                <Pill tone="sky">{ac.availableBlockIds.length} blocks</Pill>
-              </div>
-            ))}
-          </div>
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 /* ================================== FLYERS ================================ */
 
-function FlyersView({ state, onChange }: Props) {
+function FlyersView({ state, onChange, compact }: Props & { compact?: boolean }) {
   const flyers = state.users.filter((u) => u.role === "flyer");
   return (
-    <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-4">
+    <div className={compact ? "space-y-3" : "grid md:grid-cols-2 xl:grid-cols-3 gap-4"}>
       {flyers.map((f) => {
         const ranges = state.availability.filter((a) => a.flyerId === f.id);
         const assigned = state.assignments.filter((a) => a.pilotId === f.id || a.coPilotId === f.id);

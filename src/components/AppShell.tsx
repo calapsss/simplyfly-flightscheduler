@@ -6,13 +6,21 @@ export function AppShell({
   user,
   onLogout,
   children,
-  tabs,
+  noHeader,
 }: {
   user: User;
   onLogout: () => void;
   children: ReactNode;
-  tabs?: ReactNode;
+  noHeader?: boolean;
 }) {
+  if (noHeader) {
+    return (
+      <div className="min-h-screen bg-slate-50">
+        <main>{children}</main>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-slate-50">
       <header className="sticky top-0 z-30 bg-white/80 backdrop-blur border-b border-slate-200">
@@ -48,11 +56,6 @@ export function AppShell({
             </button>
           </div>
         </div>
-        {tabs && (
-          <div className="max-w-[1600px] mx-auto px-6">
-            {tabs}
-          </div>
-        )}
       </header>
       <main className="max-w-[1600px] mx-auto px-6 py-8">{children}</main>
     </div>
