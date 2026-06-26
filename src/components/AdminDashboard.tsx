@@ -968,14 +968,14 @@ function RosterPanel({
   onChange: (next: AppState) => void;
 }) {
   const [filter, setFilter] = useState("");
-  const [trackFilter, setTrackFilter] = useState<"all" | "student" | "ip">("all");
+  const [trackFilter, setTrackFilter] = useState<"student" | "ip">("ip");
 
   const flyers = state.users.filter((u) => u.role === "flyer");
   const q = filter.trim().toLowerCase();
   let filtered = q
     ? flyers.filter((f) => f.name.toLowerCase().includes(q) || f.callsign?.toLowerCase().includes(q))
     : flyers;
-  if (trackFilter !== "all") filtered = filtered.filter((f) => f.track === trackFilter);
+  filtered = filtered.filter((f) => f.track === trackFilter);
 
   const assignedInBlock = selectedBlock
     ? new Set(
@@ -1019,7 +1019,7 @@ function RosterPanel({
   return (
     <>
       <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg mb-3">
-        {(["all", "student", "ip"] as const).map((t) => (
+        {(["ip", "student"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTrackFilter(t)}
@@ -1027,7 +1027,7 @@ function RosterPanel({
               trackFilter === t ? "bg-white text-navy-900 shadow-sm" : "text-slate-500"
             }`}
           >
-            {t === "all" ? "All" : t === "student" ? "AS" : "IP"}
+            {t === "ip" ? "IP" : "AS"}
           </button>
         ))}
       </div>
