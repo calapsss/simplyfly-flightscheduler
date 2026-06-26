@@ -1092,13 +1092,24 @@ function RosterPanel({
                   {f.callsign && <div className="text-[10px] font-mono text-slate-400">{f.callsign}</div>}
                 </div>
                 <div className="flex items-center gap-1.5">
-                  {flightCount > 0 && <Pill tone="navy" className="text-[9px]">{flightCount} flt</Pill>}
-                  {selectedBlock && isAssigned && <Pill tone="slate" className="text-[9px]">Assigned</Pill>}
+                  {(selectedBlock || flightCount > 0) && (
+                    <span
+                      title={
+                        isAssigned ? "Assigned" :
+                        !isAvailable ? "Unavailable" :
+                        undefined
+                      }
+                    >
+                      <Pill
+                        tone={!isAvailable ? "slate" : isAssigned ? "slate" : "navy"}
+                        className={`text-[9px] ${!isAvailable || isAssigned ? "border-dashed" : ""}`}
+                      >
+                        {flightCount} flt
+                      </Pill>
+                    </span>
+                  )}
                   {selectedBlock && !isAssigned && isAvailable && (
                     <Pill tone={f.track === "ip" ? "green" : "sky"} className="text-[9px]">{f.track === "ip" ? "PIC" : "CP"}</Pill>
-                  )}
-                  {selectedBlock && !isAvailable && (
-                    <Pill tone="slate" className="text-[9px] border-dashed">Unavailable</Pill>
                   )}
                   {selectedBlock && (
                     <button
