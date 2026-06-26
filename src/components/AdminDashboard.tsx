@@ -371,7 +371,26 @@ export function AdminDashboard({ state, onChange, onReset }: PropsWithReset) {
           </Card>
         ) : (
           <div className="flex gap-5 relative">
-            {/* ============== SIDEBAR (left) ============== */}
+            {/* ============== SCHEDULER GRID ============== */}
+            <div className="flex-1 min-w-0">
+              <SchedulerGrid
+                state={state}
+                onChange={onChange}
+                selectedBlockId={selectedBlockId}
+                onBlockHeaderClick={handleBlockHeaderClick}
+                dayBlocks={dayBlocks}
+                assignmentsByCell={assignmentsByCell}
+                conflictingCells={conflictingCells}
+                threepeatCells={threepeatCells}
+                overfourCells={overfourCells}
+                onDrop={performDrop}
+                onRemove={removeFromCell}
+                onClearDay={clearDay}
+                dayAssignmentsCount={dayAssignments.length}
+              />
+            </div>
+
+            {/* ============== SIDEBAR (right) ============== */}
             <aside className={`w-[270px] shrink-0 transition-all duration-200 ${rosterOpen ? "" : "w-0 overflow-hidden"}`}>
               <div className="space-y-4">
                 {/* Collapse toggle */}
@@ -384,7 +403,7 @@ export function AdminDashboard({ state, onChange, onReset }: PropsWithReset) {
                     className="text-[11px] text-slate-400 hover:text-navy-900 shrink-0"
                     title={rosterOpen ? "Collapse sidebar" : "Expand sidebar"}
                   >
-                    {rosterOpen ? "◂" : "▸"}
+                    {rosterOpen ? "▸" : "◂"}
                   </button>
                 </div>
 
@@ -441,58 +460,39 @@ export function AdminDashboard({ state, onChange, onReset }: PropsWithReset) {
                 )}
               </div>
             </aside>
-
-            {/* ============== SCHEDULER GRID ============== */}
-            <div className="flex-1 min-w-0">
-              <SchedulerGrid
-                state={state}
-                onChange={onChange}
-                selectedBlockId={selectedBlockId}
-                onBlockHeaderClick={handleBlockHeaderClick}
-                dayBlocks={dayBlocks}
-                assignmentsByCell={assignmentsByCell}
-                conflictingCells={conflictingCells}
-                threepeatCells={threepeatCells}
-                overfourCells={overfourCells}
-                onDrop={performDrop}
-                onRemove={removeFromCell}
-                onClearDay={clearDay}
-                dayAssignmentsCount={dayAssignments.length}
-              />
-            </div>
-
-            {/* ============== DRAWER (overlays from right) ============== */}
-            {drawerView && (
-              <>
-                <div
-                  className="fixed inset-0 z-30 bg-black/10"
-                  onClick={() => setDrawerView(null)}
-                />
-                <aside className="fixed top-0 right-0 z-40 h-full w-[420px] bg-white shadow-2xl border-l border-slate-200 overflow-y-auto">
-                  <div className="sticky top-0 bg-white/80 backdrop-blur border-b border-slate-200 px-5 py-3 flex items-center justify-between z-10">
-                    <span className="text-[14px] font-semibold text-navy-900 capitalize">{drawerView}</span>
-                    <button
-                      onClick={() => setDrawerView(null)}
-                      className="text-[14px] text-slate-400 hover:text-navy-900 p-1 rounded-md hover:bg-slate-100"
-                    >
-                      ✕
-                    </button>
-                  </div>
-                  <div className="p-5">
-                    {drawerView === "blocks" && (
-                      <BlockManager state={state} onChange={onChange} compact />
-                    )}
-                    {drawerView === "aircraft" && (
-                      <AircraftManager state={state} onChange={onChange} compact />
-                    )}
-                    {drawerView === "flyers" && (
-                      <FlyersView state={state} onChange={onChange} compact />
-                    )}
-                  </div>
-                </aside>
-              </>
-            )}
           </div>
+        )}
+
+        {/* ============== DRAWER (overlays from right) ============== */}
+        {drawerView && (
+          <>
+            <div
+              className="fixed inset-0 z-30 bg-black/10"
+              onClick={() => setDrawerView(null)}
+            />
+            <aside className="fixed top-0 right-0 z-40 h-full w-[420px] bg-white shadow-2xl border-l border-slate-200 overflow-y-auto">
+              <div className="sticky top-0 bg-white/80 backdrop-blur border-b border-slate-200 px-5 py-3 flex items-center justify-between z-10">
+                <span className="text-[14px] font-semibold text-navy-900 capitalize">{drawerView}</span>
+                <button
+                  onClick={() => setDrawerView(null)}
+                  className="text-[14px] text-slate-400 hover:text-navy-900 p-1 rounded-md hover:bg-slate-100"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="p-5">
+                {drawerView === "blocks" && (
+                  <BlockManager state={state} onChange={onChange} compact selectedDay={selectedDay} />
+                )}
+                {drawerView === "aircraft" && (
+                  <AircraftManager state={state} onChange={onChange} compact />
+                )}
+                {drawerView === "flyers" && (
+                  <FlyersView state={state} onChange={onChange} compact />
+                )}
+              </div>
+            </aside>
+          </>
         )}
       </div>
     </div>
@@ -1079,8 +1079,7 @@ function addMinutes(time: string, mins: number) {
   return `${String(nh).padStart(2, "0")}:${String(nm).padStart(2, "0")}`;
 }
 
-function BlockManager({ state, onChange, compact }: Props & { compact?: boolean }) {
-  const [day, setDay] = useState(new Date().getDay());
+function BlockManager({ state, onChange, compact, selectedDay }: Props & { compact?: boolean; selectedDay: number }) {
   const [start, setStart] = useState("06:00");
   const [end, setEnd] = useState("09:00");
   const [applyTo, setApplyTo] = useState<"single" | "week">("single");
@@ -1104,7 +1103,7 @@ function BlockManager({ state, onChange, compact }: Props & { compact?: boolean 
   function add() {
     if (start >= end) return;
     const newBlocks: Block[] = [];
-    const days = applyTo === "week" ? [0, 1, 2, 3, 4, 5, 6] : [day];
+    const days = applyTo === "week" ? [0, 1, 2, 3, 4, 5, 6] : [selectedDay];
     days.forEach((d) => {
       newBlocks.push({ id: uid("b"), day: d, start, end });
     });
@@ -1142,7 +1141,7 @@ function BlockManager({ state, onChange, compact }: Props & { compact?: boolean 
   }
 
   const blocksForDay = state.blocks
-    .filter((b) => b.day === day)
+    .filter((b) => b.day === selectedDay)
     .sort((a, b) => a.start.localeCompare(b.start));
 
   return (
@@ -1150,21 +1149,12 @@ function BlockManager({ state, onChange, compact }: Props & { compact?: boolean 
       <Card className={compact ? "p-4" : "p-6"}>
         <SectionTitle
           title="Add block time"
-          subtitle={compact ? "" : "Define operating windows for the day."}
+          subtitle={compact ? undefined : `Define operating windows for ${DAY_FULL[selectedDay]}.`}
         />
         <div className="space-y-3">
-          <div>
+          <div className="flex items-center gap-2">
             <Label>Day</Label>
-            <select
-              value={day}
-              onChange={(e) => setDay(Number(e.target.value))}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-[14px] text-navy-900 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
-              disabled={applyTo === "week"}
-            >
-              {DAY_LABELS.map((d, i) => (
-                <option key={d} value={i}>{DAY_FULL[i]}</option>
-              ))}
-            </select>
+            <Pill tone="navy">{DAY_FULL[selectedDay]}</Pill>
           </div>
           <div>
             <Label>Apply to</Label>
@@ -1194,7 +1184,7 @@ function BlockManager({ state, onChange, compact }: Props & { compact?: boolean 
             </div>
           </div>
           <Button className="w-full" onClick={add} disabled={start >= end}>
-            {applyTo === "week" ? "Add to all 7 days" : "Add block"}
+            {applyTo === "week" ? "Add to all 7 days" : `Add block for ${DAY_LABELS[selectedDay]}`}
           </Button>
         </div>
       </Card>
@@ -1202,26 +1192,13 @@ function BlockManager({ state, onChange, compact }: Props & { compact?: boolean 
       <Card className={compact ? "p-4" : "p-6 md:col-span-2"}>
         <div className="flex items-center justify-between mb-4">
           <SectionTitle
-            title="Blocks for the day"
+            title={`Blocks for ${DAY_LABELS[selectedDay]}`}
             subtitle={compact ? undefined : `${blocksForDay.length} block${blocksForDay.length === 1 ? "" : "s"} configured`}
           />
-          <div className="flex items-center gap-1 p-1 bg-slate-100 rounded-lg">
-            {DAY_LABELS.map((d, i) => (
-              <button
-                key={d}
-                onClick={() => setDay(i)}
-                className={`px-2.5 py-1 text-[11.5px] font-medium rounded-md transition ${
-                  day === i ? "bg-white text-navy-900 shadow-sm" : "text-slate-500"
-                }`}
-              >
-                {d}
-              </button>
-            ))}
-          </div>
         </div>
         <div className="space-y-2">
           {blocksForDay.length === 0 ? (
-            <p className="text-[13px] text-slate-500 py-6 text-center">No blocks configured for {DAY_FULL[day]}.</p>
+            <p className="text-[13px] text-slate-500 py-6 text-center">No blocks configured for {DAY_FULL[selectedDay]}.</p>
           ) : (
             blocksForDay.map((b) => (
               <div key={b.id} className="flex items-center gap-4 p-3 rounded-lg border border-slate-200">
@@ -1290,7 +1267,6 @@ function blockAircraftCount(blockId: string, state: AppState) {
 }
 
 /* ============================= AIRCRAFT MANAGER =========================== */
-/* Each aircraft picks which blocks (across all days) it is available for.   */
 
 function AircraftManager({ state, onChange, compact }: Props & { compact?: boolean }) {
   const [tail, setTail] = useState("");
@@ -1368,7 +1344,9 @@ function AircraftManager({ state, onChange, compact }: Props & { compact?: boole
             <Input value={type} onChange={(e) => setType(e.target.value)} placeholder="e.g. C172 Skyhawk" />
           </div>
           <div>
-            <Label>Available blocks (across the week)</Label>
+            <div className="flex items-center gap-2 mb-2">
+              <Label>Available blocks</Label>
+            </div>
             <BlockPicker
               blocks={state.blocks}
               selected={avail}
@@ -1382,7 +1360,7 @@ function AircraftManager({ state, onChange, compact }: Props & { compact?: boole
       </Card>
 
       <Card className={compact ? "p-4" : "p-6 md:col-span-2"}>
-        <SectionTitle title="Fleet" subtitle={compact ? undefined : "Click a block chip to toggle an aircraft's availability."} />
+        <SectionTitle title="Fleet" subtitle={compact ? undefined : "Toggle each aircraft's availability across the week"} />
         <div className="space-y-3">
           {state.aircraft.length === 0 ? (
             <p className="text-[13px] text-slate-500 py-6 text-center">No aircraft added yet.</p>
@@ -1419,7 +1397,9 @@ function AircraftManager({ state, onChange, compact }: Props & { compact?: boole
                   <Pill tone="sky">{ac.availableBlockIds.length} blocks</Pill>
                   <Button variant="danger" size="sm" onClick={() => remove(ac.id)}>Remove</Button>
                 </div>
-                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Availability</div>
+                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">
+                  Weekly availability
+                </div>
                 <BlockPicker
                   blocks={state.blocks}
                   selected={ac.availableBlockIds}
