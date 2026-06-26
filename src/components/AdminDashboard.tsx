@@ -318,6 +318,46 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
     onChange({ ...state, assignments: updated });
   }
 
+  function autoArrange() {
+    const dayBlockIds = dayBlocks.map((b) => b.id);
+    const blockIdx = new Map(dayBlockIds.map((id, i) => [id, i]));
+
+    const byPilot = new Map<string, { assignmentId: string; aircraftId: string; blockIdx: number }[]>();
+    state.assignments.forEach((a) => {
+      if (!blockIdx.has(a.blockId) || !a.pilotId) return;
+      if (!byPilot.has(a.pilotId)) byPilot.set(a.pilotId, []);
+      byPilot.get(a.pilotId)!.push({ assignmentId: a.id, aircraftId: a.aircraftId, blockIdx: blockIdx.get(a.blockId)! });
+    });
+
+    let changed = false;
+    const updated = state.assignments.map((a) => ({ ...a }));
+
+    for (const [, entries] of byPilot) {
+      entries.sort((a, b) => a.blockIdx - b.blockIdx);
+      for (let i = 0; i < entries.length - 1; i++) {
+        const curr = entries[i];
+        const next = entries[i + 1];
+        if (next.blockIdx !== curr.blockIdx + 1) continue;
+        if (next.aircraftId === curr.aircraftId) continue;
+
+        const targetBlockId = dayBlockIds[next.blockIdx];
+        const ac = state.aircraft.find((a) => a.id === curr.aircraftId);
+        if (!ac || !ac.availableBlockIds.includes(targetBlockId)) continue;
+
+        if (updated.some((a) => a.aircraftId === curr.aircraftId && a.blockId === targetBlockId)) continue;
+
+        const assnIdx = updated.findIndex((a) => a.id === next.assignmentId);
+        if (assnIdx < 0) continue;
+        updated[assnIdx] = { ...updated[assnIdx], aircraftId: curr.aircraftId };
+        next.aircraftId = curr.aircraftId;
+        changed = true;
+      }
+    }
+
+    if (!changed) return;
+    onChange({ ...state, assignments: updated });
+  }
+
   function handleSortieDrop(srcAcId: string, srcBlockId: string, targetAcId: string, targetBlockId: string) {
     const srcAssignment = state.assignments.find(
       (a) => a.aircraftId === srcAcId && a.blockId === srcBlockId
@@ -643,6 +683,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                 onSortieDrop={handleSortieDrop}
                 onRemove={removeFromCell}
                 onClearDay={clearDay}
+                onAutoArrange={autoArrange}
                 dayAssignmentsCount={dayAssignments.length}
               />
             </div>
@@ -950,6 +991,7 @@ function SchedulerGrid({
   onSortieDrop,
   onRemove,
   onClearDay,
+  onAutoArrange,
   dayAssignmentsCount,
 }: {
   state: AppState;
@@ -965,6 +1007,7 @@ function SchedulerGrid({
   onSortieDrop: (srcAcId: string, srcBlockId: string, targetAcId: string, targetBlockId: string) => void;
   onRemove: (acId: string, blockId: string, role: "pilot" | "coPilot" | "both") => void;
   onClearDay: () => void;
+  onAutoArrange: () => void;
   dayAssignmentsCount: number;
 }) {
   const [missionEditCell, setMissionEditCell] = useState<string | null>(null);
@@ -979,7 +1022,10 @@ function SchedulerGrid({
         <div className="flex items-center gap-2 text-[12px] text-slate-500">
           <span className="font-mono text-[11px] px-1.5 py-0.5 bg-navy-900 text-white rounded">SCHEDULE</span>
         </div>
-        <Button variant="secondary" size="sm" onClick={onClearDay}>Clear day</Button>
+        <div className="flex items-center gap-2">
+          <Button variant="secondary" size="sm" onClick={onAutoArrange}>Auto-arrange</Button>
+          <Button variant="secondary" size="sm" onClick={onClearDay}>Clear day</Button>
+        </div>
       </div>
 
       <div className="overflow-x-auto">

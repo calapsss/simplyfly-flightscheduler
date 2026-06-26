@@ -62,19 +62,4 @@ body {
   outline-offset: -2px;
 }
 
-/* Animated flight path stroke */
-@keyframes dash-flight {
-  to { stroke-dashoffset: -40; }
-}
-.flight-path-animated {
-  stroke-dasharray: 4 6;
-  animation: dash-flight 3s linear infinite;
-}
 
-@keyframes float-plane {
-  0%, 100% { transform: translateY(0) rotate(-8deg); }
-  50% { transform: translateY(-3px) rotate(-6deg); }
-}
-.plane-float {
-  animation: float-plane 4s ease-in-out infinite;
-}
