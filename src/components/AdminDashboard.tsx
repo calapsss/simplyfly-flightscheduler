@@ -23,6 +23,14 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
     targetAcId: string;
     targetBlockId: string;
   } | null>(null);
+  const [availWarning, setAvailWarning] = useState<{
+    srcAcId: string;
+    srcBlockId: string;
+    targetAcId: string;
+    targetBlockId: string;
+    missingFlyers: { role: string; name: string }[];
+    type: "move" | "swap";
+  } | null>(null);
 
   const dayBlocks = useMemo(
     () => state.blocks.filter((b) => b.day === selectedDay).sort((a, b) => a.start.localeCompare(b.start)),
@@ -264,6 +272,32 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
     const targetBlock = state.blocks.find((b) => b.id === mv.targetBlockId);
     if (!srcAssignment || !targetBlock) { setPendingMove(null); return; }
 
+    const missingFlyers: { role: string; name: string }[] = [];
+    const check = (fid: string | undefined, role: string) => {
+      if (!fid) return;
+      if (!state.availability.some(
+        (a) => a.flyerId === fid && a.day === targetBlock.day && rangesOverlap(a.start, a.end, targetBlock.start, targetBlock.end)
+      )) {
+        const u = state.users.find((x) => x.id === fid);
+        missingFlyers.push({ role, name: u?.name ?? fid });
+      }
+    };
+    check(srcAssignment.pilotId, "PIC");
+    check(srcAssignment.coPilotId, "CP");
+
+    if (missingFlyers.length > 0) {
+      setAvailWarning({ ...mv, missingFlyers, type: "move" });
+      return;
+    }
+
+    executeSortieMove(mv, srcAssignment, targetBlock);
+  }
+
+  function executeSortieMove(
+    mv: NonNullable<typeof pendingMove>,
+    srcAssignment: Assignment,
+    targetBlock: Block
+  ) {
     const newAvailability: Availability[] = [];
     const ensureAvail = (flyerId: string | undefined) => {
       if (!flyerId) return;
@@ -286,6 +320,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
       availability: [...state.availability, ...newAvailability],
     });
     setPendingMove(null);
+    setAvailWarning(null);
   }
 
   function swapSortieMove() {
@@ -301,6 +336,36 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
     const targetBlock = state.blocks.find((b) => b.id === mv.targetBlockId);
     if (!srcBlock || !targetBlock) { setPendingMove(null); return; }
 
+    const missingFlyers: { role: string; name: string }[] = [];
+    const check = (fid: string | undefined, role: string, block: Block) => {
+      if (!fid) return;
+      if (!state.availability.some(
+        (a) => a.flyerId === fid && a.day === block.day && rangesOverlap(a.start, a.end, block.start, block.end)
+      )) {
+        const u = state.users.find((x) => x.id === fid);
+        missingFlyers.push({ role, name: u?.name ?? fid });
+      }
+    };
+    check(srcAssignment.pilotId, "PIC", targetBlock);
+    check(srcAssignment.coPilotId, "CP", targetBlock);
+    check(targetAssignment.pilotId, "PIC", srcBlock);
+    check(targetAssignment.coPilotId, "CP", srcBlock);
+
+    if (missingFlyers.length > 0) {
+      setAvailWarning({ ...mv, missingFlyers, type: "swap" });
+      return;
+    }
+
+    executeSwapSortieMove(mv, srcAssignment, targetAssignment, srcBlock, targetBlock);
+  }
+
+  function executeSwapSortieMove(
+    mv: NonNullable<typeof pendingMove>,
+    srcAssignment: Assignment,
+    targetAssignment: Assignment,
+    srcBlock: Block,
+    targetBlock: Block
+  ) {
     const newAvailability: Availability[] = [];
     const ensureAvail = (flyerId: string | undefined, block: Block) => {
       if (!flyerId) return;
@@ -324,6 +389,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
       availability: [...state.availability, ...newAvailability],
     });
     setPendingMove(null);
+    setAvailWarning(null);
   }
 
   function removeFromCell(aircraftId: string, blockId: string, role: "pilot" | "coPilot" | "both") {
@@ -703,6 +769,96 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                   className="px-4 py-2 rounded-lg text-[13px] font-semibold bg-navy-900 text-white hover:bg-navy-800 transition shadow-sm"
                 >
                   Move
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ============ AVAILABILITY WARNING MODAL ============ */}
+      {availWarning && (() => {
+        const targetAc = state.aircraft.find((a) => a.id === availWarning.targetAcId);
+        const targetBlock = state.blocks.find((b) => b.id === availWarning.targetBlockId);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setAvailWarning(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-full mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 border-b border-slate-200 flex items-center gap-2">
+                <span className="text-amber-500 text-lg">⚠</span>
+                <h2 className="text-[15px] font-bold text-navy-900">Availability Warning</h2>
+              </div>
+              <div className="p-5 space-y-2 text-[13px]">
+                {availWarning.type === "swap" ? (
+                  <p className="text-slate-600">
+                    The following crew member{availWarning.missingFlyers.length > 1 ? "s are" : " is"} not available for
+                    {" "}their new block and will need availability added:
+                  </p>
+                ) : (
+                  <p className="text-slate-600">
+                    The following crew member{availWarning.missingFlyers.length > 1 ? "s are" : " is"} not available for
+                    {" "}{targetAc?.tailNumber ?? "—"} ({targetBlock?.start ?? "—"} – {targetBlock?.end ?? "—"}):
+                  </p>
+                )}
+                <ul className="space-y-1">
+                  {availWarning.missingFlyers.map((f) => (
+                    <li key={f.role} className="flex items-center gap-2 text-navy-900 font-medium">
+                      <span className="text-[10px] font-semibold text-sky-600">{f.role}</span>
+                      {f.name}
+                    </li>
+                  ))}
+                </ul>
+                <p className="text-sky-700 text-[12px] pt-1">
+                  {availWarning.type === "swap"
+                    ? "Availability will be added automatically for both blocks."
+                    : "Availability will be added automatically for this block."}
+                </p>
+              </div>
+              <div className="p-5 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  onClick={() => setAvailWarning(null)}
+                  className="px-4 py-2 rounded-lg text-[13px] font-medium text-slate-600 hover:bg-slate-100 transition"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={() => {
+                    const aw = availWarning;
+                    if (!aw) return;
+                    if (aw.type === "swap") {
+                      const sa = state.assignments.find(
+                        (a) => a.aircraftId === aw.srcAcId && a.blockId === aw.srcBlockId
+                      );
+                      const ta = assignmentsByCell.get(`${aw.targetAcId}:${aw.targetBlockId}`);
+                      const sb = state.blocks.find((b) => b.id === aw.srcBlockId);
+                      const tb = state.blocks.find((b) => b.id === aw.targetBlockId);
+                      if (sa && ta && sb && tb) {
+                        executeSwapSortieMove(
+                          { srcAcId: aw.srcAcId, srcBlockId: aw.srcBlockId, targetAcId: aw.targetAcId, targetBlockId: aw.targetBlockId },
+                          sa, ta, sb, tb
+                        );
+                      } else {
+                        setAvailWarning(null);
+                        setPendingMove(null);
+                      }
+                    } else {
+                      const sa = state.assignments.find(
+                        (a) => a.aircraftId === aw.srcAcId && a.blockId === aw.srcBlockId
+                      );
+                      const tb = state.blocks.find((b) => b.id === aw.targetBlockId);
+                      if (sa && tb) {
+                        executeSortieMove(
+                          { srcAcId: aw.srcAcId, srcBlockId: aw.srcBlockId, targetAcId: aw.targetAcId, targetBlockId: aw.targetBlockId },
+                          sa, tb
+                        );
+                      } else {
+                        setAvailWarning(null);
+                        setPendingMove(null);
+                      }
+                    }
+                  }}
+                  className="px-4 py-2 rounded-lg text-[13px] font-semibold bg-amber-600 text-white hover:bg-amber-700 transition shadow-sm"
+                >
+                  Proceed
                 </button>
               </div>
             </div>
