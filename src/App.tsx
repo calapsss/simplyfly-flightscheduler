@@ -37,7 +37,7 @@ export default function App() {
       {user.role === "flyer" ? (
         <FlyerDashboard state={state} user={user} onChange={setState} />
       ) : (
-        <AdminDashboard state={state} onChange={setState} onReset={handleReset} />
+        <AdminDashboard state={state} onChange={setState} onReset={handleReset} user={user} onLogout={handleLogout} />
       )}
     </AppShell>
   );
