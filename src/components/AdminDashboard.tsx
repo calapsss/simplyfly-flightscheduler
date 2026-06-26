@@ -254,6 +254,70 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
     }
   }
 
+  function autoFillBlock() {
+    if (!selectedBlock) return;
+    const block = selectedBlock;
+    const used = new Set<string>();
+    const nextAvail = (list: User[]) => list.find((u) => !used.has(u.id));
+    const sortFn = (a: User, b: User) => {
+      const aFlt = flyerFlightCount.get(a.id) ?? 0;
+      const bFlt = flyerFlightCount.get(b.id) ?? 0;
+      if (aFlt !== bFlt) return aFlt - bFlt;
+      const aRank = rankOrder.get(a.rank ?? "") ?? 0;
+      const bRank = rankOrder.get(b.rank ?? "") ?? 0;
+      if (bRank !== aRank) return bRank - aRank;
+      return a.name.localeCompare(b.name);
+    };
+
+    const ips = state.users
+      .filter((u) => u.role === "flyer" && u.track === "ip" && availableForBlock.has(u.id))
+      .filter((u) => !state.assignments.some((a) => a.blockId === block.id && (a.pilotId === u.id || a.coPilotId === u.id)))
+      .sort(sortFn);
+    const students = state.users
+      .filter((u) => u.role === "flyer" && u.track === "student" && availableForBlock.has(u.id))
+      .filter((u) => !state.assignments.some((a) => a.blockId === block.id && (a.pilotId === u.id || a.coPilotId === u.id)))
+      .sort(sortFn);
+
+    const updated = state.assignments.map((a) => ({ ...a }));
+    let changed = false;
+
+    state.aircraft.forEach((ac) => {
+      if (!ac.availableBlockIds.includes(block.id)) return;
+      const cellKey = `${ac.id}:${block.id}`;
+      const existing = assignmentsByCell.get(cellKey);
+
+      if (existing) {
+        if (existing.pilotId && existing.coPilotId) return;
+        if (existing.pilotId && !existing.coPilotId) {
+          const s = nextAvail(students);
+          if (!s) return;
+          used.add(s.id);
+          const idx = updated.findIndex((a) => a.id === existing.id);
+          updated[idx] = { ...updated[idx], coPilotId: s.id };
+          changed = true;
+        } else if (!existing.pilotId && existing.coPilotId) {
+          const ip = nextAvail(ips);
+          if (!ip) return;
+          used.add(ip.id);
+          const idx = updated.findIndex((a) => a.id === existing.id);
+          updated[idx] = { ...updated[idx], pilotId: ip.id };
+          changed = true;
+        }
+      } else {
+        const ip = nextAvail(ips);
+        const s = nextAvail(students);
+        if (!ip || !s) return;
+        used.add(ip.id);
+        used.add(s.id);
+        updated.push({ id: uid("a"), pilotId: ip.id, coPilotId: s.id, aircraftId: ac.id, blockId: block.id });
+        changed = true;
+      }
+    });
+
+    if (!changed) return;
+    onChange({ ...state, assignments: updated });
+  }
+
   function handleSortieDrop(srcAcId: string, srcBlockId: string, targetAcId: string, targetBlockId: string) {
     const srcAssignment = state.assignments.find(
       (a) => a.aircraftId === srcAcId && a.blockId === srcBlockId
@@ -611,6 +675,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                       flyerFlightCount={flyerFlightCount}
                       rankOrder={rankOrder}
                       onChange={onChange}
+                      onAutoFill={autoFillBlock}
                     />
 
                     {/* WARNINGS */}
@@ -1326,6 +1391,7 @@ function RosterPanel({
   flyerFlightCount,
   rankOrder,
   onChange,
+  onAutoFill,
 }: {
   state: AppState;
   selectedBlock: Block | null;
@@ -1334,6 +1400,7 @@ function RosterPanel({
   flyerFlightCount: Map<string, number>;
   rankOrder: Map<string, number>;
   onChange: (next: AppState) => void;
+  onAutoFill: () => void;
 }) {
   const [filter, setFilter] = useState("");
   const [trackFilter, setTrackFilter] = useState<"student" | "ip">("ip");
@@ -1403,12 +1470,20 @@ function RosterPanel({
       {selectedBlock && (
         <div className="mb-2 flex items-center justify-between">
           <Pill tone="sky">{DAY_FULL[selectedBlock.day]} · {selectedBlock.start}–{selectedBlock.end}</Pill>
-          <button
-            onClick={() => onBlockFilter(null)}
-            className="text-[10px] text-slate-500 hover:text-navy-900 underline"
-          >
-            Clear
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={onAutoFill}
+              className="text-[10px] text-sky-600 hover:text-sky-800 font-semibold"
+            >
+              Auto-fill
+            </button>
+            <button
+              onClick={() => onBlockFilter(null)}
+              className="text-[10px] text-slate-500 hover:text-navy-900 underline"
+            >
+              Clear
+            </button>
+          </div>
         </div>
       )}
       <Input
