@@ -17,6 +17,12 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [drawerView, setDrawerView] = useState<"blocks" | "aircraft" | "flyers" | null>(null);
   const [rosterOpen, setRosterOpen] = useState(true);
+  const [pendingMove, setPendingMove] = useState<{
+    srcAcId: string;
+    srcBlockId: string;
+    targetAcId: string;
+    targetBlockId: string;
+  } | null>(null);
 
   const dayBlocks = useMemo(
     () => state.blocks.filter((b) => b.day === selectedDay).sort((a, b) => a.start.localeCompare(b.start)),
@@ -240,6 +246,86 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
     }
   }
 
+  function handleSortieDrop(srcAcId: string, srcBlockId: string, targetAcId: string, targetBlockId: string) {
+    const srcAssignment = state.assignments.find(
+      (a) => a.aircraftId === srcAcId && a.blockId === srcBlockId
+    );
+    if (!srcAssignment) return;
+    if (srcAcId === targetAcId && srcBlockId === targetBlockId) return;
+    setPendingMove({ srcAcId, srcBlockId, targetAcId, targetBlockId });
+  }
+
+  function confirmSortieMove() {
+    const mv = pendingMove;
+    if (!mv) return;
+    const srcAssignment = state.assignments.find(
+      (a) => a.aircraftId === mv.srcAcId && a.blockId === mv.srcBlockId
+    );
+    const targetBlock = state.blocks.find((b) => b.id === mv.targetBlockId);
+    if (!srcAssignment || !targetBlock) { setPendingMove(null); return; }
+
+    const newAvailability: Availability[] = [];
+    const ensureAvail = (flyerId: string | undefined) => {
+      if (!flyerId) return;
+      if (state.availability.some(
+        (a) => a.flyerId === flyerId && a.day === targetBlock.day && rangesOverlap(a.start, a.end, targetBlock.start, targetBlock.end)
+      )) return;
+      newAvailability.push({ id: uid("av"), flyerId, day: targetBlock.day, start: targetBlock.start, end: targetBlock.end });
+    };
+    ensureAvail(srcAssignment.pilotId);
+    ensureAvail(srcAssignment.coPilotId);
+
+    const targetCellKey = `${mv.targetAcId}:${mv.targetBlockId}`;
+    onChange({
+      ...state,
+      assignments: state.assignments
+        .filter((a) => `${a.aircraftId}:${a.blockId}` !== targetCellKey || a.id === srcAssignment.id)
+        .map((a) =>
+          a.id === srcAssignment.id ? { ...a, aircraftId: mv.targetAcId, blockId: mv.targetBlockId } : a
+        ),
+      availability: [...state.availability, ...newAvailability],
+    });
+    setPendingMove(null);
+  }
+
+  function swapSortieMove() {
+    const mv = pendingMove;
+    if (!mv) return;
+    const srcAssignment = state.assignments.find(
+      (a) => a.aircraftId === mv.srcAcId && a.blockId === mv.srcBlockId
+    );
+    const targetAssignment = assignmentsByCell.get(`${mv.targetAcId}:${mv.targetBlockId}`);
+    if (!srcAssignment || !targetAssignment) { setPendingMove(null); return; }
+
+    const srcBlock = state.blocks.find((b) => b.id === mv.srcBlockId);
+    const targetBlock = state.blocks.find((b) => b.id === mv.targetBlockId);
+    if (!srcBlock || !targetBlock) { setPendingMove(null); return; }
+
+    const newAvailability: Availability[] = [];
+    const ensureAvail = (flyerId: string | undefined, block: Block) => {
+      if (!flyerId) return;
+      if (state.availability.some(
+        (a) => a.flyerId === flyerId && a.day === block.day && rangesOverlap(a.start, a.end, block.start, block.end)
+      )) return;
+      newAvailability.push({ id: uid("av"), flyerId, day: block.day, start: block.start, end: block.end });
+    };
+    ensureAvail(srcAssignment.pilotId, targetBlock);
+    ensureAvail(srcAssignment.coPilotId, targetBlock);
+    ensureAvail(targetAssignment.pilotId, srcBlock);
+    ensureAvail(targetAssignment.coPilotId, srcBlock);
+
+    onChange({
+      ...state,
+      assignments: state.assignments.map((a) => {
+        if (a.id === srcAssignment.id) return { ...a, aircraftId: mv.targetAcId, blockId: mv.targetBlockId };
+        if (a.id === targetAssignment.id) return { ...a, aircraftId: mv.srcAcId, blockId: mv.srcBlockId };
+        return a;
+      }),
+      availability: [...state.availability, ...newAvailability],
+    });
+    setPendingMove(null);
+  }
+
   function removeFromCell(aircraftId: string, blockId: string, role: "pilot" | "coPilot" | "both") {
     const cellKey = `${aircraftId}:${blockId}`;
     const a = assignmentsByCell.get(cellKey);
@@ -424,6 +510,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                 threepeatCells={threepeatCells}
                 overfourCells={overfourCells}
                 onDrop={performDrop}
+                onSortieDrop={handleSortieDrop}
                 onRemove={removeFromCell}
                 onClearDay={clearDay}
                 dayAssignmentsCount={dayAssignments.length}
@@ -538,6 +625,90 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
           </>
         )}
       </div>
+
+      {/* ============ CONFIRM SORTIE MOVE MODAL ============ */}
+      {pendingMove && (() => {
+        const src = state.assignments.find(
+          (a) => a.aircraftId === pendingMove.srcAcId && a.blockId === pendingMove.srcBlockId
+        );
+        const srcAc = state.aircraft.find((a) => a.id === pendingMove.srcAcId);
+        const srcBlock = state.blocks.find((b) => b.id === pendingMove.srcBlockId);
+        const targetAc = state.aircraft.find((a) => a.id === pendingMove.targetAcId);
+        const targetBlock = state.blocks.find((b) => b.id === pendingMove.targetBlockId);
+        const targetAssignment = assignmentsByCell.get(`${pendingMove.targetAcId}:${pendingMove.targetBlockId}`);
+        const pilot = src?.pilotId ? state.users.find((u) => u.id === src.pilotId) : null;
+        const coPilot = src?.coPilotId ? state.users.find((u) => u.id === src.coPilotId) : null;
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setPendingMove(null)}>
+            <div className="bg-white rounded-xl shadow-2xl w-[440px] max-w-full mx-4 overflow-hidden" onClick={(e) => e.stopPropagation()}>
+              <div className="p-5 border-b border-slate-200">
+                <h2 className="text-[15px] font-bold text-navy-900">Confirm Sortie Move</h2>
+              </div>
+              <div className="p-5 space-y-3 text-[13px]">
+                <div className="flex items-start gap-3">
+                  <div className="flex-1">
+                    <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">From</div>
+                    <div className="font-mono font-semibold text-navy-900">{srcAc?.tailNumber ?? "—"}</div>
+                    <div className="text-slate-500">{srcBlock?.start ?? "—"} – {srcBlock?.end ?? "—"}</div>
+                    {pilot && <div className="text-navy-900 mt-1"><span className="text-[10px] font-semibold text-sky-600">PIC </span>{pilot.rank} {pilot.name}</div>}
+                    {coPilot && <div className="text-navy-900"><span className="text-[10px] font-semibold text-sky-600">CP </span>{coPilot.rank} {coPilot.name}</div>}
+                    {src?.mission && <div className="text-slate-500 text-[11px]">MSN: {src.mission}</div>}
+                    {src?.areaAssignment && <div className="text-slate-500 text-[11px]">AA: {src.areaAssignment}</div>}
+                  </div>
+                  <div className="text-slate-300 text-2xl mt-4">→</div>
+                  <div className="flex-1">
+                    <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">To</div>
+                    <div className="font-mono font-semibold text-navy-900">{targetAc?.tailNumber ?? "—"}</div>
+                    <div className="text-slate-500">{targetBlock?.start ?? "—"} – {targetBlock?.end ?? "—"}</div>
+                    {targetAssignment ? (
+                      <div className="mt-1 text-amber-600 text-[11px]">
+                        ⚠ Will overwrite existing assignment
+                        {(() => {
+                          const tp = targetAssignment.pilotId ? state.users.find((u) => u.id === targetAssignment.pilotId) : null;
+                          const tcp = targetAssignment.coPilotId ? state.users.find((u) => u.id === targetAssignment.coPilotId) : null;
+                          return (
+                            <>
+                              {tp && <div className="text-navy-900 text-[12px]">PIC {tp.rank} {tp.name}</div>}
+                              {tcp && <div className="text-navy-900 text-[12px]">CP {tcp.rank} {tcp.name}</div>}
+                            </>
+                          );
+                        })()}
+                      </div>
+                    ) : (
+                      <div className="text-slate-400 text-[11px] mt-1">Empty — ready for assignment</div>
+                    )}
+                    <div className="text-[11px] text-sky-600 mt-1">
+                      ✨ Flyer availability will be added automatically
+                    </div>
+                  </div>
+                </div>
+              </div>
+              <div className="p-5 border-t border-slate-200 flex justify-end gap-2">
+                <button
+                  onClick={() => setPendingMove(null)}
+                  className="px-4 py-2 rounded-lg text-[13px] font-medium text-slate-600 hover:bg-slate-100 transition"
+                >
+                  Cancel
+                </button>
+                {targetAssignment ? (
+                  <button
+                    onClick={swapSortieMove}
+                    className="px-4 py-2 rounded-lg text-[13px] font-semibold bg-green-700 text-white hover:bg-green-800 transition shadow-sm"
+                  >
+                    Swap
+                  </button>
+                ) : null}
+                <button
+                  onClick={confirmSortieMove}
+                  className="px-4 py-2 rounded-lg text-[13px] font-semibold bg-navy-900 text-white hover:bg-navy-800 transition shadow-sm"
+                >
+                  Move
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
@@ -555,6 +726,7 @@ function SchedulerGrid({
   threepeatCells,
   overfourCells,
   onDrop,
+  onSortieDrop,
   onRemove,
   onClearDay,
   dayAssignmentsCount,
@@ -569,6 +741,7 @@ function SchedulerGrid({
   threepeatCells: Set<string>;
   overfourCells: Set<string>;
   onDrop: (flyerId: string, acId: string, blockId: string) => void;
+  onSortieDrop: (srcAcId: string, srcBlockId: string, targetAcId: string, targetBlockId: string) => void;
   onRemove: (acId: string, blockId: string, role: "pilot" | "coPilot" | "both") => void;
   onClearDay: () => void;
   dayAssignmentsCount: number;
@@ -577,6 +750,7 @@ function SchedulerGrid({
   const [missionDraft, setMissionDraft] = useState("");
   const [areaEditCell, setAreaEditCell] = useState<string | null>(null);
   const [areaDraft, setAreaDraft] = useState("");
+  const [highlightedCell, setHighlightedCell] = useState<string | null>(null);
 
   return (
     <Card className="p-4 overflow-hidden">
@@ -646,18 +820,52 @@ function SchedulerGrid({
                   return (
                     <td key={block.id} className="py-1">
                       <div
+                        draggable={!!assignment}
+                        onDragStart={(e) => {
+                          if (!assignment) return;
+                          e.dataTransfer.setData("text/plain", `sortie:${assignment.aircraftId}:${assignment.blockId}`);
+                          e.dataTransfer.setData("text/x-sortie", `${assignment.aircraftId}:${assignment.blockId}`);
+                          e.dataTransfer.effectAllowed = "move";
+                        }}
+                        onDragEnter={(e) => {
+                          if (e.dataTransfer.types?.includes("text/x-sortie")) {
+                            setHighlightedCell(cellKey);
+                          }
+                        }}
                         onDragOver={(e) => {
+                          if (e.dataTransfer.types?.includes("text/x-sortie")) {
+                            e.preventDefault();
+                            e.dataTransfer.dropEffect = "move";
+                            return;
+                          }
                           if (!acAvail || isFull) return;
                           e.preventDefault();
                           e.dataTransfer.dropEffect = "move";
                         }}
+                        onDragLeave={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+                            setHighlightedCell((prev) => prev === cellKey ? null : prev);
+                          }
+                        }}
+                        onDragEnd={() => setHighlightedCell(null)}
                         onDrop={(e) => {
                           e.preventDefault();
-                          const fid = e.dataTransfer.getData("text/plain");
-                          if (fid) onDrop(fid, ac.id, block.id);
+                          setHighlightedCell(null);
+                          const sortieData = e.dataTransfer.getData("text/x-sortie");
+                          if (sortieData) {
+                            const colon = sortieData.indexOf(":");
+                            if (colon > 0) {
+                              onSortieDrop(sortieData.slice(0, colon), sortieData.slice(colon + 1), ac.id, block.id);
+                            }
+                          } else {
+                            const fid = e.dataTransfer.getData("text/plain");
+                            if (fid) onDrop(fid, ac.id, block.id);
+                          }
                         }}
                         className={`h-24 rounded-lg border transition-all flex flex-col p-1 ${
-                          isConflict
+                          highlightedCell === cellKey
+                            ? "bg-sky-100 border-sky-500 ring-2 ring-sky-400"
+                            : isConflict
                             ? "bg-red-50 border-red-400 ring-1 ring-red-400"
                             : isThreepeat
                             ? "bg-amber-50 border-amber-400 ring-1 ring-amber-400"
@@ -674,7 +882,7 @@ function SchedulerGrid({
                             : isSelectedCol
                             ? "bg-sky-50/70 border-sky-400 border-dashed"
                             : "bg-white border-slate-200 hover:border-sky-300 hover:bg-sky-50/30"
-                        }`}
+                        } ${assignment && acAvail ? "cursor-grab active:cursor-grabbing" : ""}`}
                       >
                         {pilot ? (
                           <div className="flex-1 flex flex-col justify-center">
@@ -716,11 +924,13 @@ function SchedulerGrid({
                             ) : (
                               <div
                                 onDragOver={(e) => {
+                                  if (e.dataTransfer.types?.includes("text/x-sortie")) return;
                                   e.stopPropagation();
                                   e.preventDefault();
                                   e.dataTransfer.dropEffect = "move";
                                 }}
                                 onDrop={(e) => {
+                                  if (e.dataTransfer.getData("text/x-sortie")) return;
                                   e.stopPropagation();
                                   e.preventDefault();
                                   const fid = e.dataTransfer.getData("text/plain");
@@ -823,11 +1033,13 @@ function SchedulerGrid({
                             </div>
                             <div
                               onDragOver={(e) => {
+                                if (e.dataTransfer.types?.includes("text/x-sortie")) return;
                                 e.stopPropagation();
                                 e.preventDefault();
                                 e.dataTransfer.dropEffect = "move";
                               }}
                               onDrop={(e) => {
+                                if (e.dataTransfer.getData("text/x-sortie")) return;
                                 e.stopPropagation();
                                 e.preventDefault();
                                 const fid = e.dataTransfer.getData("text/plain");
