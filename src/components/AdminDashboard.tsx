@@ -344,12 +344,21 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
         const ac = state.aircraft.find((a) => a.id === curr.aircraftId);
         if (!ac || !ac.availableBlockIds.includes(targetBlockId)) continue;
 
-        if (updated.some((a) => a.aircraftId === curr.aircraftId && a.blockId === targetBlockId)) continue;
+        const cellOccupant = updated.find((a) => a.aircraftId === curr.aircraftId && a.blockId === targetBlockId);
 
-        const assnIdx = updated.findIndex((a) => a.id === next.assignmentId);
-        if (assnIdx < 0) continue;
-        updated[assnIdx] = { ...updated[assnIdx], aircraftId: curr.aircraftId };
-        next.aircraftId = curr.aircraftId;
+        const nextIdx = updated.findIndex((a) => a.id === next.assignmentId);
+        if (nextIdx < 0) continue;
+
+        if (cellOccupant) {
+          const occIdx = updated.findIndex((a) => a.id === cellOccupant.id);
+          if (occIdx < 0) continue;
+          updated[occIdx] = { ...updated[occIdx], aircraftId: next.aircraftId };
+          updated[nextIdx] = { ...updated[nextIdx], aircraftId: curr.aircraftId };
+          next.aircraftId = curr.aircraftId;
+        } else {
+          updated[nextIdx] = { ...updated[nextIdx], aircraftId: curr.aircraftId };
+          next.aircraftId = curr.aircraftId;
+        }
         changed = true;
       }
     }
