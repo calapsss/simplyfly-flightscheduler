@@ -69,3 +69,12 @@ The prototype ships with a Philippine Air Force training squadron roster:
 - **26 flyers** with ranks and 13 pre-assigned sorties across all three aircraft
 - Aircraft 009 is restricted to 1 sortie (HPO), reflected in block availability
 - Block times, aircraft types, missions, and area assignments are all editable in the admin UI
+
+## Way ahead
+
+| Priority | Feature | Description |
+|----------|---------|-------------|
+| 1 | **Full pilot profile** | Dedicated profile view per flyer — show rank, track, quals, flight history, and availability at a glance |
+| 2 | **Pilot qualifications** | Track and manage pilot qualifications (e.g., instrument, formation, night, NVG) with expiry dates; filter/restrict assignments by qual |
+| 3 | **Flight hour tracking** | Log and roll up flight hours per pilot — daily, monthly, and cumulative; enforce flight/duty-period limits |
+| 4 | **Shareable export** | Export the daily schedule as a PNG/image for messaging apps (WhatsApp, Telegram, etc.) — one tap to share
