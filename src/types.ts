@@ -5,8 +5,9 @@ export type User = {
   name: string;
   callsign?: string;
   rank?: string;  // 2LT, 1LT, CPT, MAJ, LTC, COL
+  password?: string;
   track?: "student" | "ip";
-  qualification?: "2LFE" | "EL" | "1LFE" | "TP" | "TNG" | "NON-TNG";
+  qualifications?: string[];
   lesson?: string;   // Due Lesson for students
   dolf?: string;     // Date of Last Flight (YYYY-MM-DD)
   role: Role;
@@ -65,6 +66,11 @@ export type AppState = {
 
 export const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export const DAY_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+
+export function lastName(user: User): string {
+  const parts = user.name.split(" ");
+  return parts[parts.length - 1];
+}
 
 /** Does a time range [start, end) overlap with another [start, end)? */
 export function rangesOverlap(aS: string, aE: string, bS: string, bE: string) {

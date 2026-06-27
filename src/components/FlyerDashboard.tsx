@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { AppState, Availability, User } from "../types";
-import { DAY_FULL, DAY_LABELS, rangesOverlap } from "../types";
+import { DAY_FULL, DAY_LABELS, lastName, rangesOverlap } from "../types";
 import { Card, SectionTitle, Button, Input, Label, Stat, Pill } from "./ui";
 import { PlaneIcon } from "./Logo";
 import { uid } from "../store";
@@ -164,7 +164,7 @@ export function FlyerDashboard({ state, user, onChange }: Props) {
                   {other && (
                     <div className="text-[11.5px] text-slate-500 mt-0.5">
                       with {other.rank && <span className="font-semibold text-sky-600">{other.rank} </span>}
-                      {other.name}
+                      {lastName(other)}
                     </div>
                   )}
                 </div>

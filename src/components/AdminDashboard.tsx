@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import type { AppState, Assignment, Availability, Block, Aircraft, User } from "../types";
-import { DAY_FULL, DAY_LABELS, rangesOverlap } from "../types";
+import { DAY_FULL, DAY_LABELS, lastName, rangesOverlap } from "../types";
+import { cn } from "../utils/cn";
 import { Card, SectionTitle, Button, Input, Label, Pill } from "./ui";
 import { Logo, PlaneIcon } from "./Logo";
 import { uid } from "../store";
@@ -175,7 +176,10 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
       }
     });
 
-    const nameFor = (id: string) => state.users.find((u) => u.id === id)?.name ?? id;
+    const nameFor = (id: string) => {
+      const u = state.users.find((u) => u.id === id);
+      return u ? lastName(u) : id;
+    };
 
     conflictFlyers.forEach((id) => list.push({ flyerName: nameFor(id), type: "conflict" }));
     threepeatFlyers.forEach((id) => list.push({ flyerName: nameFor(id), type: "threepeat" }));
@@ -392,7 +396,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
         (a) => a.flyerId === fid && a.day === targetBlock.day && rangesOverlap(a.start, a.end, targetBlock.start, targetBlock.end)
       )) {
         const u = state.users.find((x) => x.id === fid);
-        missingFlyers.push({ role, name: u?.name ?? fid });
+        missingFlyers.push({ role, name: u ? lastName(u) : fid });
       }
     };
     check(srcAssignment.pilotId, "PIC");
@@ -456,7 +460,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
         (a) => a.flyerId === fid && a.day === block.day && rangesOverlap(a.start, a.end, block.start, block.end)
       )) {
         const u = state.users.find((x) => x.id === fid);
-        missingFlyers.push({ role, name: u?.name ?? fid });
+        missingFlyers.push({ role, name: u ? lastName(u) : fid });
       }
     };
     check(srcAssignment.pilotId, "PIC", targetBlock);
@@ -587,7 +591,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
               <div className="text-right hidden sm:block">
                 <div className="text-[12px] font-medium text-navy-900">
                   {user.rank && <span className="text-[10px] font-semibold text-sky-600 mr-1">{user.rank}</span>}
-                  {user.name}
+                  {lastName(user)}
                 </div>
               </div>
               <div className="w-8 h-8 rounded-full bg-gradient-to-br from-navy-700 to-navy-900 text-white flex items-center justify-center text-[11px] font-semibold">
@@ -831,8 +835,8 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                     <div className="text-[10px] font-semibold text-slate-400 uppercase tracking-wider mb-1">From</div>
                     <div className="font-mono font-semibold text-navy-900">{srcAc?.tailNumber ?? "—"}</div>
                     <div className="text-slate-500">{srcBlock?.start ?? "—"} – {srcBlock?.end ?? "—"}</div>
-                    {pilot && <div className="text-navy-900 mt-1"><span className="text-[10px] font-semibold text-sky-600">PIC </span>{pilot.rank} {pilot.name}</div>}
-                    {coPilot && <div className="text-navy-900"><span className="text-[10px] font-semibold text-sky-600">CP </span>{coPilot.rank} {coPilot.name}</div>}
+                    {pilot && <div className="text-navy-900 mt-1"><span className="text-[10px] font-semibold text-sky-600">PIC </span>{pilot.rank} {lastName(pilot)}</div>}
+                    {coPilot && <div className="text-navy-900"><span className="text-[10px] font-semibold text-sky-600">CP </span>{coPilot.rank} {lastName(coPilot)}</div>}
                     {src?.mission && <div className="text-slate-500 text-[11px]">MSN: {src.mission}</div>}
                     {src?.areaAssignment && <div className="text-slate-500 text-[11px]">AA: {src.areaAssignment}</div>}
                   </div>
@@ -849,8 +853,8 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                           const tcp = targetAssignment.coPilotId ? state.users.find((u) => u.id === targetAssignment.coPilotId) : null;
                           return (
                             <>
-                              {tp && <div className="text-navy-900 text-[12px]">PIC {tp.rank} {tp.name}</div>}
-                              {tcp && <div className="text-navy-900 text-[12px]">CP {tcp.rank} {tcp.name}</div>}
+                              {tp && <div className="text-navy-900 text-[12px]">PIC {tp.rank} {lastName(tp)}</div>}
+                              {tcp && <div className="text-navy-900 text-[12px]">CP {tcp.rank} {lastName(tcp)}</div>}
                             </>
                           );
                         })()}
@@ -918,7 +922,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                   {availWarning.missingFlyers.map((f) => (
                     <li key={f.role} className="flex items-center gap-2 text-navy-900 font-medium">
                       <span className="text-[10px] font-semibold text-sky-600">{f.role}</span>
-                      {f.name}
+{f.name}
                     </li>
                   ))}
                 </ul>
@@ -1166,7 +1170,7 @@ function SchedulerGrid({
                               <Pill tone="navy" className="text-[9px] py-0 px-1">PIC</Pill>
                               <span className="text-[11.5px] font-semibold truncate flex-1">
                                 {pilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{pilot.rank}</span>}
-                                {pilot.name.split(" ")[0]}
+                                {lastName(pilot)}
                               </span>
                               {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
                               {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
@@ -1184,7 +1188,7 @@ function SchedulerGrid({
                                 <Pill tone="sky" className="text-[9px] py-0 px-1">CP</Pill>
                                 <span className="text-[11.5px] font-medium truncate flex-1">
                                   {coPilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{coPilot.rank}</span>}
-                                  {coPilot.name.split(" ")[0]}
+                                  {lastName(coPilot)}
                                 </span>
                                 {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
                                 {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
@@ -1294,7 +1298,7 @@ function SchedulerGrid({
                               <Pill tone="sky" className="text-[9px] py-0 px-1">CP</Pill>
                               <span className="text-[11.5px] font-medium truncate flex-1">
                                 {coPilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{coPilot.rank}</span>}
-                                {coPilot.name.split(" ")[0]}
+                                {lastName(coPilot)}
                               </span>
                               {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
                               {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
@@ -1578,12 +1582,12 @@ function RosterPanel({
                 <div className="min-w-0 flex-1">
                   <div className="text-[12px] font-medium text-navy-900 truncate flex items-center gap-1">
                     {f.rank && <span className="text-[10px] font-semibold text-sky-600">{f.rank}</span>}
-                    {f.name.split(" ")[0]}
+{lastName(f)}
                     {f.track === "student" && <span className="text-[8px] font-medium text-violet-600 bg-violet-50 px-1 rounded">AS</span>}
                     {f.track === "ip" && (
                       <>
                         <span className="text-[8px] font-medium text-amber-600 bg-amber-50 px-1 rounded">IP</span>
-                        {f.qualification && <span className="text-[8px] font-mono text-slate-500 bg-slate-100 px-1 rounded">{f.qualification}</span>}
+                        {f.qualifications && f.qualifications.length > 0 && <span className="text-[8px] font-mono text-slate-500 bg-slate-100 px-1 rounded">{f.qualifications.join(", ")}</span>}
                       </>
                     )}
                   </div>
@@ -1690,8 +1694,8 @@ function SelectedCellPanel({
               <div key={a.id} className="text-[12px] border border-slate-100 rounded-lg p-2">
                 {ac && <div className="font-mono font-semibold text-navy-900">{ac.tailNumber}</div>}
                 <div className="text-slate-500 mt-0.5">
-                  {pilot && <span>PIC: {pilot.name.split(" ")[0]}</span>}
-                  {coPilot && <span> {pilot ? "+" : "CP:"} {coPilot.name.split(" ")[0]}</span>}
+                  {pilot && <span>PIC: {lastName(pilot)}</span>}
+                  {coPilot && <span> {pilot ? "+" : "CP:"} {lastName(coPilot)}</span>}
                 </div>
                 {a.mission && <div className="text-[10px] text-sky-600 mt-0.5">MSN: {a.mission}</div>}
                 {a.areaAssignment && <div className="text-[10px] text-sky-600">AA: {a.areaAssignment}</div>}
@@ -2150,7 +2154,7 @@ function FlyersView({ state, onChange, compact }: Props & { compact?: boolean })
               <div className="flex-1">
                 <div className="text-[14px] font-semibold text-navy-900 flex items-center gap-1.5">
                   {f.rank && <span className="text-[12px] font-semibold text-sky-600">{f.rank}</span>}
-                  {f.name}
+                  {lastName(f)}
                   {f.track === "student" && <span className="text-[9px] font-medium text-violet-600 bg-violet-50 px-1.5 py-0.5 rounded">AS</span>}
                   {f.track === "ip" && <span className="text-[9px] font-medium text-amber-600 bg-amber-50 px-1.5 py-0.5 rounded">IP</span>}
                 </div>
@@ -2198,20 +2202,37 @@ function FlyersView({ state, onChange, compact }: Props & { compact?: boolean })
             )}
             {f.track === "ip" && (
               <div className="mb-4">
-                <Label>Qualification</Label>
-                <select
-                  value={f.qualification ?? ""}
-                  onChange={(e) => updateUser({ qualification: (e.target.value || undefined) as User["qualification"] })}
-                  className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] text-navy-900 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500"
-                >
-                  <option value="">—</option>
-                  <option value="2LFE">2LFE</option>
-                  <option value="EL">EL</option>
-                  <option value="1LFE">1LFE</option>
-                  <option value="TP">TP</option>
-                  <option value="TNG">TNG</option>
-                  <option value="NON-TNG">NON-TNG</option>
-                </select>
+                <Label>Qualifications</Label>
+                <div className="flex flex-wrap gap-1.5 mt-1">
+                  {["2LFE", "TP", "FL", "EL", "1LFE", "TNG", "NON-TNG", "AIF"].map((q) => {
+                    const checked = f.qualifications?.includes(q) ?? false;
+                    return (
+                      <label
+                        key={q}
+                        className={cn(
+                          "px-2 py-1 rounded text-[11px] font-mono cursor-pointer border transition-colors",
+                          checked
+                            ? "bg-sky-100 text-sky-800 border-sky-300"
+                            : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                        )}
+                      >
+                        <input
+                          type="checkbox"
+                          className="sr-only"
+                          checked={checked}
+                          onChange={() => {
+                            const current = f.qualifications ?? [];
+                            const next = checked
+                              ? current.filter((x) => x !== q)
+                              : [...current, q];
+                            updateUser({ qualifications: next.length > 0 ? next : undefined });
+                          }}
+                        />
+                        {q}
+                      </label>
+                    );
+                  })}
+                </div>
               </div>
             )}
 

@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import type { User } from "../types";
+import { lastName } from "../types";
 import { Logo } from "./Logo";
 
 export function AppShell({
@@ -40,7 +41,7 @@ export function AppShell({
             <div className="text-right hidden sm:block">
               <div className="text-[13px] font-medium text-navy-900">
                 {user.rank && <span className="text-[11.5px] font-semibold text-sky-600 mr-1">{user.rank}</span>}
-                {user.name}
+                {lastName(user)}
                 {user.callsign && <span className="ml-1.5 font-mono text-[11px] text-slate-400">{user.callsign}</span>}
               </div>
               <div className="text-[11.5px] text-slate-500 capitalize">{user.role}</div>

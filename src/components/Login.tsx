@@ -10,25 +10,30 @@ type LoginProps = {
 
 export function Login({ users, onLogin }: LoginProps) {
   const [role, setRole] = useState<Role>("flyer");
-  const [email, setEmail] = useState("");
+  const [callsign, setCallsign] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  const roleUsers = users.filter((u) => u.role === role);
-
-  function handleDemoLogin(u: User) {
-    onLogin(u);
-  }
-
-  function handleEmailLogin(e: React.FormEvent) {
+  function handleLogin(e: React.FormEvent) {
     e.preventDefault();
+    setError(null);
+
+    const trimmedCallsign = callsign.trim();
     const match = users.find(
-      (u) => u.email.toLowerCase() === email.trim().toLowerCase() && u.role === role
+      (u) => u.callsign?.toLowerCase() === trimmedCallsign.toLowerCase() && u.role === role
     );
-    if (match) {
-      onLogin(match);
-    } else {
-      setError("No account found for that email and role.");
+
+    if (!match) {
+      setError("No account found for that callsign.");
+      return;
     }
+
+    if (match.password && match.password !== password) {
+      setError("Incorrect password.");
+      return;
+    }
+
+    onLogin(match);
   }
 
   return (
@@ -44,7 +49,6 @@ export function Login({ users, onLogin }: LoginProps) {
         </div>
 
         <div className="relative z-10 mt-auto mb-10">
-          {/* Hero flight path */}
           <svg viewBox="0 0 400 180" className="w-full max-w-md mb-8" aria-hidden>
             <defs>
               <linearGradient id="pathGrad" x1="0" x2="1">
@@ -108,7 +112,7 @@ export function Login({ users, onLogin }: LoginProps) {
               Welcome back, pilot.
             </h2>
             <p className="text-[14px] text-slate-500 mt-1">
-              Sign in to access your operations workspace.
+              Sign in with your callsign and password.
             </p>
           </div>
 
@@ -129,20 +133,25 @@ export function Login({ users, onLogin }: LoginProps) {
             ))}
           </div>
 
-          <form onSubmit={handleEmailLogin} className="space-y-4">
+          <form onSubmit={handleLogin} className="space-y-4">
             <div>
-              <Label>Email</Label>
+              <Label>Callsign</Label>
               <Input
-                type="email"
-                placeholder="you@simplyfly.aero"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                type="text"
+                placeholder="e.g. 285"
+                value={callsign}
+                onChange={(e) => setCallsign(e.target.value)}
                 required
               />
             </div>
             <div>
               <Label>Password</Label>
-              <Input type="password" placeholder="••••••••" defaultValue="demo" />
+              <Input
+                type="password"
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
             </div>
             {error && <p className="text-[12.5px] text-red-600">{error}</p>}
             <Button type="submit" className="w-full">
@@ -150,41 +159,7 @@ export function Login({ users, onLogin }: LoginProps) {
             </Button>
           </form>
 
-          <div className="my-6 flex items-center gap-3">
-            <div className="h-px flex-1 bg-slate-200" />
-            <span className="text-[11px] text-slate-400 font-medium">QUICK ACCESS</span>
-            <div className="h-px flex-1 bg-slate-200" />
-          </div>
 
-          <div className="space-y-2">
-            {roleUsers.map((u) => (
-              <button
-                key={u.id}
-                onClick={() => handleDemoLogin(u)}
-                className="w-full flex items-center gap-3 p-3 rounded-xl border border-slate-200 hover:border-sky-400 hover:bg-sky-50/40 transition text-left group"
-              >
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-navy-700 to-navy-900 text-white flex items-center justify-center text-[13px] font-semibold">
-                  {u.name.split(" ").map((n) => n[0]).join("").slice(0, 2)}
-                </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-[13.5px] font-medium text-navy-900 truncate">
-                    {u.rank && <span className="text-[11px] font-semibold text-sky-600 mr-1.5">{u.rank}</span>}
-                    {u.name}
-                    {u.callsign && (
-                      <span className="ml-2 text-[11px] font-mono text-slate-400">{u.callsign}</span>
-                    )}
-                  </div>
-                  <div className="text-[12px] text-slate-500 truncate">{u.email}</div>
-                </div>
-                <span className="text-slate-300 group-hover:text-sky-500 transition">→</span>
-              </button>
-            ))}
-          </div>
-
-          <p className="text-[11.5px] text-slate-400 mt-6 leading-relaxed">
-            This is a prototype. Click a quick-access account to sign in instantly —
-            no password required.
-          </p>
         </div>
       </div>
     </div>
