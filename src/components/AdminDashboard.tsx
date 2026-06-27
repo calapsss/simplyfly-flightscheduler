@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useRef, useEffect } from "react";
 import type { AppState, Assignment, Availability, Block, Aircraft, User } from "../types";
 import { DAY_FULL, DAY_LABELS, lastName, rangesOverlap } from "../types";
 import { cn } from "../utils/cn";
@@ -1442,6 +1442,9 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 
 /* ============================= ROSTER PANEL =============================== */
 
+const RANKS = ["COL", "LTC", "MAJ", "CPT", "1LT", "2LT"] as const;
+const QUALS = ["2LFE", "TP", "FL", "EL", "1LFE", "TNG", "NON-TNG", "AIF"] as const;
+
 function RosterPanel({
   state,
   selectedBlock,
@@ -1461,33 +1464,62 @@ function RosterPanel({
   onChange: (next: AppState) => void;
   onAutoFill: () => void;
 }) {
-  const [filter, setFilter] = useState("");
+  const [searchText, setSearchText] = useState("");
   const [trackFilter, setTrackFilter] = useState<"student" | "ip">("ip");
+  const [filterOpen, setFilterOpen] = useState(false);
+  const [selectedRanks, setSelectedRanks] = useState<string[]>([]);
+  const [selectedQuals, setSelectedQuals] = useState<string[]>([]);
+  const filterRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (filterRef.current && !filterRef.current.contains(e.target as Node)) {
+        setFilterOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  const hasActiveFilters = selectedRanks.length > 0 || selectedQuals.length > 0;
 
   const flyers = state.users.filter((u) => u.role === "flyer");
-  const q = filter.trim().toLowerCase();
-  let filtered = q
-    ? flyers.filter((f) => f.name.toLowerCase().includes(q) || f.callsign?.toLowerCase().includes(q))
-    : flyers;
-  filtered = filtered.filter((f) => f.track === trackFilter);
 
-  const assignedInBlock = selectedBlock
-    ? new Set(
-        state.assignments
-          .filter((a) => a.blockId === selectedBlock.id)
-          .flatMap((a) => [a.pilotId, a.coPilotId])
-          .filter(Boolean)
-      )
-    : new Set<string>();
+  const entries = useMemo(() => {
+    const searchQuery = searchText.trim().toLowerCase();
+    let f = searchQuery
+      ? flyers.filter((x) => x.name.toLowerCase().includes(searchQuery) || x.callsign?.toLowerCase().includes(searchQuery))
+      : flyers;
+    f = f.filter((x) => x.track === trackFilter);
 
-  interface FlyerEntry { flyer: User; isAvailable: boolean; isAssigned: boolean; }
-  let entries: FlyerEntry[] = filtered.map((f) => ({
-    flyer: f,
-    isAvailable: selectedBlock ? availableForBlock.has(f.id) : true,
-    isAssigned: selectedBlock ? assignedInBlock.has(f.id) : false,
-  }));
+    if (selectedRanks.length > 0) {
+      f = f.filter((x) => !!x.rank && selectedRanks.includes(x.rank));
+    }
+    if (selectedQuals.length > 0) {
+      f = f.filter((x) => {
+        const qs = x.qualifications;
+        return !!qs && qs.some((q) => selectedQuals.includes(q));
+      });
+    }
 
-  entries.sort((a, b) => sortByPriority(a, b, flyerFlightCount, rankOrder));
+    const assignedInBlock = selectedBlock
+      ? new Set(
+          state.assignments
+            .filter((a) => a.blockId === selectedBlock.id)
+            .flatMap((a) => [a.pilotId, a.coPilotId])
+            .filter(Boolean)
+        )
+      : new Set<string>();
+
+    const result = f.map((x) => ({
+      flyer: x,
+      isAvailable: selectedBlock ? availableForBlock.has(x.id) : true,
+      isAssigned: selectedBlock ? assignedInBlock.has(x.id) : false,
+    }));
+
+    result.sort((a, b) => sortByPriority(a, b, flyerFlightCount, rankOrder));
+    return result;
+  }, [flyers, searchText, trackFilter, selectedRanks, selectedQuals, selectedBlock, availableForBlock, flyerFlightCount, rankOrder, state.assignments]);
 
   function handleToggleAvailability(flyerId: string) {
     if (!selectedBlock) return;
@@ -1508,6 +1540,23 @@ function RosterPanel({
       };
       onChange({ ...state, availability: [...state.availability, newAvail] });
     }
+  }
+
+  function toggleRank(rank: string) {
+    setSelectedRanks((prev) =>
+      prev.includes(rank) ? prev.filter((x) => x !== rank) : [...prev, rank]
+    );
+  }
+
+  function toggleQual(qual: string) {
+    setSelectedQuals((prev) =>
+      prev.includes(qual) ? prev.filter((x) => x !== qual) : [...prev, qual]
+    );
+  }
+
+  function clearFilters() {
+    setSelectedRanks([]);
+    setSelectedQuals([]);
   }
 
   return (
@@ -1545,12 +1594,101 @@ function RosterPanel({
           </div>
         </div>
       )}
-      <Input
-        placeholder="Search flyers..."
-        value={filter}
-        onChange={(e) => setFilter(e.target.value)}
-        className="mb-3"
-      />
+      <div className="relative mb-3" ref={filterRef}>
+        <div className="flex gap-1">
+          <Input
+            placeholder="Search flyers..."
+            value={searchText}
+            onChange={(e) => setSearchText(e.target.value)}
+            className="flex-1"
+          />
+          <button
+            onClick={() => setFilterOpen(!filterOpen)}
+            className={cn(
+              "shrink-0 px-2 rounded-lg border transition flex items-center justify-center text-[13px]",
+              hasActiveFilters
+                ? "bg-sky-100 border-sky-400 text-sky-700"
+                : "border-slate-200 text-slate-400 hover:border-slate-300 hover:text-slate-600"
+            )}
+            title="Filter by rank and qualification"
+          >
+            <span className={hasActiveFilters ? "text-sky-600" : ""}>▤</span>
+            {hasActiveFilters && (
+              <span className="ml-1 w-1.5 h-1.5 rounded-full bg-sky-500" />
+            )}
+          </button>
+        </div>
+
+        {filterOpen && (
+          <div className="absolute top-full right-0 mt-1 z-20 w-[220px] bg-white border border-slate-200 rounded-xl shadow-xl p-3 space-y-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">Rank</span>
+              {hasActiveFilters && (
+                <button
+                  onClick={clearFilters}
+                  className="text-[10px] text-sky-600 hover:text-sky-700 underline"
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {RANKS.map((r) => {
+                const active = selectedRanks.includes(r);
+                return (
+                  <button
+                    key={r}
+                    onClick={() => toggleRank(r)}
+                    className={cn(
+                      "px-2 py-1 rounded text-[10.5px] font-mono font-medium border transition",
+                      active
+                        ? "bg-navy-900 text-white border-navy-900"
+                        : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                    )}
+                  >
+                    {r}
+                  </button>
+                );
+              })}
+            </div>
+
+            {trackFilter === "ip" && (
+              <>
+                <div className="border-t border-slate-100 pt-2">
+                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wider">
+                    Qualification
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5">
+                  {QUALS.map((qual) => {
+                    const active = selectedQuals.includes(qual);
+                    return (
+                      <button
+                        key={qual}
+                        onClick={() => toggleQual(qual)}
+                        className={cn(
+                          "px-2 py-1 rounded text-[10.5px] font-mono font-medium border transition",
+                          active
+                            ? "bg-sky-600 text-white border-sky-600"
+                            : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                        )}
+                      >
+                        {qual}
+                      </button>
+                    );
+                  })}
+                </div>
+              </>
+            )}
+
+            {!hasActiveFilters && (
+              <p className="text-[10px] text-slate-400 text-center pt-1 border-t border-slate-100">
+                No filters applied — showing all
+              </p>
+            )}
+          </div>
+        )}
+      </div>
       <div className="space-y-1.5 max-h-[400px] overflow-y-auto pr-1">
         {entries.length === 0 ? (
           <p className="text-[12px] text-slate-400 text-center py-4">

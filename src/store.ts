@@ -19,6 +19,7 @@ export function loadState(): AppState {
     if (!raw) return initialState;
     const parsed = JSON.parse(raw) as AppState;
     if (!parsed.users || parsed.users.length !== SEED_USERS.length) return initialState;
+    parsed.users = parsed.users.map((u, i) => ({ ...SEED_USERS[i], ...u }));
     return parsed;
   } catch {
     return initialState;
