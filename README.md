@@ -78,3 +78,10 @@ The prototype ships with a Philippine Air Force training squadron roster:
 | 2 | **Pilot qualifications** | Track and manage pilot qualifications (e.g., instrument, formation, night, NVG) with expiry dates; filter/restrict assignments by qual |
 | 3 | **Flight hour tracking** | Log and roll up flight hours per pilot — daily, monthly, and cumulative; enforce flight/duty-period limits |
 | 4 | **Shareable export** | Export the daily schedule as a PNG/image for messaging apps (WhatsApp, Telegram, etc.) — one tap to share
+
+
+
+## TODO
+1. Transition to Real Database
+2. Prototype with Supabase and Vercel
+3. Functional And Working
