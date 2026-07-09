@@ -85,3 +85,4 @@ The prototype ships with a Philippine Air Force training squadron roster:
 1. Transition to Real Database
 2. Prototype with Supabase and Vercel
 3. Functional And Working
+4. Upload roster
