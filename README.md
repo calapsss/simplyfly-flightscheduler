@@ -82,9 +82,11 @@ The prototype ships with a Philippine Air Force training squadron roster:
 
 
 ## TODO
-1. Transition to Real Database
-2. Prototype with Supabase and Vercel
-3. Functional And Working
-4. Upload roster
-5. Autosync
+1. Need a sample mock data
+2.  Transition to Real Database
+3. Prototype with Supabase and Vercel
+4. Functional And Working
+5. Upload roster
+6. Autosync
+7. Need Agent file for creation.
 
