@@ -1,92 +1,149 @@
 # SimplyFly Flight Scheduler
 
-A crew-scheduling prototype for military flight operations. Built with React 19, TypeScript 5.9, Vite 7, and Tailwind CSS 4.
+A crew-scheduling prototype for military flight operations. The app is now a React + FastAPI + SQLite stack designed to run on one VPS.
 
 **Less admin. More flying.**
 
-## Features
+## Stack
 
-- **Role-based views** — Flyer dashboard for personal schedule and availability; admin dashboard for full operational control
-- **Auth-free login** — Email lookup against a seed roster (no password). Quick-access button for demo
-- **Admin daily scheduler** — Drag-and-drop flyer cards onto an aircraft×block-time grid (native HTML5 DragEvent, no library)
-- **Inline editing** — Click to edit block times, aircraft types, mission designators, and area assignments. Enter/blur saves, Escape cancels
-- **SOP violation warnings** — Visual feedback for crew conflicts (red), 3+ consecutive flights (amber), and 4+ flights in a day (rose)
-- **LocalStorage persistence** — All state survives page refresh. Reset button restores seed data
-- **Self-contained build** — `vite build` outputs a single `dist/index.html` with all JS/CSS inlined
+- React 19 + TypeScript 5.9 + Vite 7 + Tailwind CSS 4
+- FastAPI + Pydantic, served by Uvicorn
+- SQLite via Python's stdlib `sqlite3`
+- `vite-plugin-singlefile`, so `npm run build` outputs one self-contained `dist/index.html`
 
-## Quick start
+## Quick Start
 
 ```bash
 npm install
-npm run dev        # dev server at localhost:5173
-npm run build      # production build → dist/index.html
-npm run preview    # preview the production build
-npx tsc --noEmit   # typecheck
+python3 -m pip install -r requirements.txt
+npm run dev
 ```
 
-## Data model
+Local development runs FastAPI at `127.0.0.1:8000` and Vite at `127.0.0.1:5173`. Vite proxies `/api` to FastAPI.
 
-| Type | Description |
-|------|-------------|
-| `User` | Flyer or admin with name, rank, callsign, email |
-| `Block` | Operating window with start/end time for a specific day |
-| `Aircraft` | Tail number, type, and per-block availability |
-| `Availability` | Flyer-declared time ranges they're available |
-| `Assignment` | A scheduled sortie: PIC + CP → aircraft at a block, with mission and area assignment |
+Useful commands:
 
-State is held as plain React state at the `App` level and persisted to `localStorage` under key `simplyfly:v1`.
-
-## Project structure
-
+```bash
+npm run dev                         # FastAPI + Vite dev servers
+npm run build                       # production React build -> dist/index.html
+npm run preview                     # FastAPI serves built React + API
+npx tsc --noEmit                    # TypeScript check
+python3 -m compileall backend scripts
 ```
+
+## Data Storage
+
+FastAPI owns persistence. React reads and writes through same-origin `/api/*` endpoints:
+
+| Endpoint | Purpose |
+| --- | --- |
+| `GET /api/health` | Backend health check |
+| `GET /api/state` | Load full scheduler state |
+| `PUT /api/state` | Persist a full scheduler state replacement |
+| `POST /api/reset` | Re-seed SQLite from `backend/seed.json` |
+
+Local SQLite defaults to `data/simplyfly.sqlite`. Production should set:
+
+```bash
+SIMPLYFLY_DB_PATH=/var/lib/simplyfly/simplyfly.sqlite
+```
+
+The backend enables SQLite foreign keys, WAL mode, and a busy timeout. Run one Uvicorn worker for this single-VPS deployment.
+
+## VPS Deployment
+
+1. Install Node.js, Python 3.10+, and a reverse proxy such as Nginx or Caddy.
+2. Clone or copy the app to a release directory.
+3. Install dependencies and build React:
+
+```bash
+npm ci
+python3 -m pip install -r requirements.txt
+npm run build
+```
+
+4. Create the persistent database directory:
+
+```bash
+sudo mkdir -p /var/lib/simplyfly
+sudo chown simplyfly:simplyfly /var/lib/simplyfly
+```
+
+5. Run the app with one Uvicorn process:
+
+```bash
+SIMPLYFLY_DB_PATH=/var/lib/simplyfly/simplyfly.sqlite \
+python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+```
+
+6. Point Nginx or Caddy at `127.0.0.1:8000` and terminate HTTPS there.
+
+Example `systemd` service:
+
+```ini
+[Unit]
+Description=SimplyFly Flight Scheduler
+After=network.target
+
+[Service]
+User=simplyfly
+Group=simplyfly
+WorkingDirectory=/opt/simplyfly
+Environment=SIMPLYFLY_DB_PATH=/var/lib/simplyfly/simplyfly.sqlite
+ExecStart=/usr/bin/python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+```
+
+Example Nginx server block:
+
+```nginx
+server {
+  listen 80;
+  server_name schedule.example.com;
+
+  location / {
+    proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Real-IP $remote_addr;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+  }
+}
+```
+
+## Backups
+
+Keep `/var/lib/simplyfly` outside deploy wipes. A simple backup can use SQLite's online backup command:
+
+```bash
+sqlite3 /var/lib/simplyfly/simplyfly.sqlite ".backup '/var/backups/simplyfly-$(date +%F).sqlite'"
+```
+
+## Project Structure
+
+```text
+backend/
+  main.py          FastAPI app, SQLite schema, seed/reset, static serving
+  seed.json        Initial scheduler state
 src/
-  main.tsx              Entrypoint
-  App.tsx               Root component, state holder
-  types.ts              All domain types + day-label utilities
-  store.ts              Seed data + localStorage persistence
-  index.css             Tailwind v4 @theme + custom utilities
-  components/
-    Login.tsx           Email-based login screen
-    AppShell.tsx        Shared layout wrapper
-    FlyerDashboard.tsx  Flyer home: upcoming schedule + availability
-    AdminDashboard.tsx  Admin tabs: scheduler, blocks, aircraft, overview, flyers
-    ui.tsx              Shared UI primitives: Card, Button, Input, Pill, etc.
-  utils/
-    cn.ts               cn() helper wrapping clsx + tailwind-merge
+  App.tsx          Root component, API loading/saving, auth state
+  store.ts         API persistence helpers + uid()
+  types.ts         Domain types + day-label utilities
+  components/      Login, flyer dashboard, admin scheduler, shared UI
+scripts/
+  dev.py           Starts FastAPI and Vite together
 ```
 
-## Stack notes
+## Notes
 
 - Tailwind v4 uses CSS-first configuration — edit `@theme` in `src/index.css`, no `tailwind.config.*`
 - `@/` path alias maps to `src/` (configured in both `tsconfig.json` and `vite.config.ts`)
 - `vite-plugin-singlefile` inlines all assets into the build output
-- No test framework or linter configured; no CI pipeline
-
-## Seed data
-
-The prototype ships with a Philippine Air Force training squadron roster:
-- **3 aircraft** (tail numbers 064, 945, 009) with 6 operating periods per day (04:59–19:29)
-- **26 flyers** with ranks and 13 pre-assigned sorties across all three aircraft
-- Aircraft 009 is restricted to 1 sortie (HPO), reflected in block availability
-- Block times, aircraft types, missions, and area assignments are all editable in the admin UI
-
-## Way ahead
-
-| Priority | Feature | Description |
-|----------|---------|-------------|
-| 1 | **Full pilot profile** | Dedicated profile view per flyer — show rank, track, quals, flight history, and availability at a glance |
-| 2 | **Pilot qualifications** | Track and manage pilot qualifications (e.g., instrument, formation, night, NVG) with expiry dates; filter/restrict assignments by qual |
-| 3 | **Flight hour tracking** | Log and roll up flight hours per pilot — daily, monthly, and cumulative; enforce flight/duty-period limits |
-| 4 | **Shareable export** | Export the daily schedule as a PNG/image for messaging apps (WhatsApp, Telegram, etc.) — one tap to share
-
-
-
-## TODO
-1. Need a sample mock data
-2.  Transition to Real Database
-3. Prototype with Supabase and Vercel
-4. Functional And Working
-5. Upload roster
-6. Autosync
-7. Need Agent file for creation.
-
+- No test framework or linter is configured; use the checks above before deploying
+- The frontend no longer uses `localStorage`; existing browser-local data is not migrated.
+- `src/mockData.ts` remains ignored and is not required.
+- SQLite is suitable here because the deployment target is one VPS with one app process.
