@@ -1,40 +1,43 @@
-import type { AppState, User } from "./types";
-import { mockData } from "./mockData";
+import type { AppState } from "./types";
 
-const STORAGE_KEY = "simplyfly:v1";
+const API_BASE = "/api";
 
-export const SEED_USERS: User[] = mockData.users;
+async function requestState(path: string, init?: RequestInit): Promise<AppState> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...init?.headers,
+    },
+  });
 
-const initialState: AppState = {
-  users: mockData.users,
-  blocks: mockData.blocks,
-  aircraft: mockData.aircraft,
-  availability: mockData.availability,
-  assignments: mockData.assignments,
-};
-
-export function loadState(): AppState {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return initialState;
-    const parsed = JSON.parse(raw) as AppState;
-    if (!parsed.users || parsed.users.length !== SEED_USERS.length) return initialState;
-    parsed.users = parsed.users.map((u, i) => ({ ...SEED_USERS[i], ...u }));
-    return parsed;
-  } catch {
-    return initialState;
+  if (!response.ok) {
+    let detail = response.statusText;
+    try {
+      const body = (await response.json()) as { detail?: unknown };
+      if (typeof body.detail === "string") detail = body.detail;
+    } catch {
+      // Keep the HTTP status text when the response is not JSON.
+    }
+    throw new Error(detail || `Request failed with status ${response.status}`);
   }
+
+  return response.json() as Promise<AppState>;
 }
 
-export function saveState(state: AppState) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  } catch { /* ignore */ }
+export async function loadState(): Promise<AppState> {
+  return requestState("/state");
 }
 
-export function resetState(): AppState {
-  localStorage.removeItem(STORAGE_KEY);
-  return initialState;
+export async function saveState(state: AppState): Promise<AppState> {
+  return requestState("/state", {
+    method: "PUT",
+    body: JSON.stringify(state),
+  });
+}
+
+export async function resetState(): Promise<AppState> {
+  return requestState("/reset", { method: "POST" });
 }
 
 export function uid(prefix = "id") {
