@@ -1,1 +1,3 @@
 src/mockData.ts
+backend/__pycache__/
+data/*.sqlite*
