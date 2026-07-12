@@ -4,9 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite",
+    "dev": "python3 scripts/dev.py",
+    "vite": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "python3 -m uvicorn backend.main:app --host 127.0.0.1 --port 8000"
   },
   "dependencies": {
     "clsx": "2.1.1",
