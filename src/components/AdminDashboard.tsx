@@ -11,7 +11,8 @@ type Props = {
   onChange: (next: AppState) => void;
 };
 
-type DrawerView = "blocks" | "aircraft" | "flyers" | "users";
+type DrawerView = "blocks" | "aircraft" | "flyers";
+type AdminPage = "scheduler" | "users";
 
 type PropsWithReset = Props & { onReset: () => void; user: User; onLogout: () => void };
 
@@ -19,6 +20,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
   const [selectedDay, setSelectedDay] = useState(new Date().getDay());
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [drawerView, setDrawerView] = useState<DrawerView | null>(null);
+  const [adminPage, setAdminPage] = useState<AdminPage>("scheduler");
   const [rosterOpen, setRosterOpen] = useState(true);
   const [pendingMove, setPendingMove] = useState<{
     srcAcId: string;
@@ -544,9 +546,12 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
   const conflicts = warningsList.filter((w) => w.type === "conflict");
   const threepeats = warningsList.filter((w) => w.type === "threepeat");
   const overfours = warningsList.filter((w) => w.type === "overfour");
-  const drawerOptions: DrawerView[] = user.isSuperUser
-    ? ["blocks", "aircraft", "flyers", "users"]
-    : ["blocks", "aircraft", "flyers"];
+  const drawerOptions: DrawerView[] = ["blocks", "aircraft", "flyers"];
+
+  function openAdminPage(page: AdminPage) {
+    setAdminPage(page);
+    setDrawerView(null);
+  }
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -556,35 +561,59 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
           <div className="flex items-center gap-4">
             <Logo size={30} showWordmark />
             <div className="h-5 w-px bg-slate-200" />
-            <button
-              onClick={() => {
-                const next = (selectedDay + 1) % 7;
-                setSelectedDay(next);
-                setSelectedBlockId(null);
-              }}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium text-navy-900 hover:bg-slate-100 transition"
-              title="Change day (click to cycle)"
-            >
-              <span className="text-slate-400 text-[11px]">📅</span>
-              {DAY_LABELS[selectedDay]}
-            </button>
+            {user.isSuperUser && (
+              <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg">
+                {(["scheduler", "users"] as AdminPage[]).map((page) => (
+                  <button
+                    key={page}
+                    onClick={() => openAdminPage(page)}
+                    className={cn(
+                      "px-2.5 py-1 rounded-md text-[12.5px] font-medium transition",
+                      adminPage === page
+                        ? "bg-white text-navy-900 shadow-sm"
+                        : "text-slate-500 hover:bg-slate-50 hover:text-navy-900"
+                    )}
+                  >
+                    {page === "scheduler" ? "Scheduler" : "Users"}
+                  </button>
+                ))}
+              </div>
+            )}
+            {adminPage === "scheduler" && (
+              <button
+                onClick={() => {
+                  const next = (selectedDay + 1) % 7;
+                  setSelectedDay(next);
+                  setSelectedBlockId(null);
+                }}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-[13px] font-medium text-navy-900 hover:bg-slate-100 transition"
+                title="Change day (click to cycle)"
+              >
+                <span className="text-slate-400 text-[11px]">📅</span>
+                {DAY_LABELS[selectedDay]}
+              </button>
+            )}
           </div>
 
           <div className="flex items-center gap-1">
-            {drawerOptions.map((view) => (
-              <button
-                key={view}
-                onClick={() => setDrawerView(drawerView === view ? null : view)}
-                className={`px-3 py-1.5 rounded-lg text-[12.5px] font-medium transition
-                  ${drawerView === view
-                    ? "bg-navy-900 text-white shadow-sm"
-                    : "text-slate-600 hover:bg-slate-100 hover:text-navy-900"
-                  }`}
-              >
-                {view === "blocks" ? "Blocks" : view === "aircraft" ? "Aircraft" : view === "users" ? "Users" : "Flyers"}
-              </button>
-            ))}
-            <div className="w-px h-5 bg-slate-200 mx-2" />
+            {adminPage === "scheduler" && (
+              <>
+                {drawerOptions.map((view) => (
+                  <button
+                    key={view}
+                    onClick={() => setDrawerView(drawerView === view ? null : view)}
+                    className={`px-3 py-1.5 rounded-lg text-[12.5px] font-medium transition
+                      ${drawerView === view
+                        ? "bg-navy-900 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-slate-100 hover:text-navy-900"
+                      }`}
+                  >
+                    {view === "blocks" ? "Blocks" : view === "aircraft" ? "Aircraft" : "Flyers"}
+                  </button>
+                ))}
+                <div className="w-px h-5 bg-slate-200 mx-2" />
+              </>
+            )}
             <button
               onClick={onReset}
               className="text-[12px] text-slate-400 hover:text-slate-600 px-2 py-1.5 rounded-md hover:bg-slate-100 transition"
@@ -614,7 +643,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
       </header>
 
       {/* ============================= STRIP ============================== */}
-      <div className="bg-white border-b border-slate-200">
+      {adminPage === "scheduler" && <div className="bg-white border-b border-slate-200">
         <div className="max-w-[1600px] mx-auto px-6 py-2.5 flex items-center flex-wrap gap-x-4 gap-y-1.5">
           {/* Day pills */}
           <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg">
@@ -668,11 +697,13 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
             </>
           )}
         </div>
-      </div>
+      </div>}
 
       {/* ============================= MAIN ============================== */}
       <div className="max-w-[1600px] mx-auto px-6 py-5">
-        {dayBlocks.length === 0 ? (
+        {adminPage === "users" && user.isSuperUser ? (
+          <UsersView state={state} onChange={onChange} currentUser={user} />
+        ) : dayBlocks.length === 0 ? (
           <Card className="p-10 text-center">
             <div className="text-slate-300 text-3xl mb-2">▦</div>
             <p className="text-[14px] text-slate-600">No block times defined for {DAY_FULL[selectedDay]}.</p>
@@ -784,16 +815,13 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
         )}
 
         {/* ============== DRAWER (overlays from right) ============== */}
-        {drawerView && (
+        {adminPage === "scheduler" && drawerView && (
           <>
             <div
               className="fixed inset-0 z-30 bg-black/10"
               onClick={() => setDrawerView(null)}
             />
-            <aside className={cn(
-              "fixed top-0 right-0 z-40 h-full bg-white shadow-2xl border-l border-slate-200 overflow-y-auto",
-              drawerView === "users" ? "w-[min(1040px,calc(100vw-32px))]" : "w-[420px]"
-            )}>
+            <aside className="fixed top-0 right-0 z-40 h-full w-[420px] bg-white shadow-2xl border-l border-slate-200 overflow-y-auto">
               <div className="sticky top-0 bg-white/80 backdrop-blur border-b border-slate-200 px-5 py-3 flex items-center justify-between z-10">
                 <span className="text-[14px] font-semibold text-navy-900 capitalize">{drawerView}</span>
                 <button
@@ -812,9 +840,6 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                 )}
                 {drawerView === "flyers" && (
                   <FlyersView state={state} onChange={onChange} compact />
-                )}
-                {drawerView === "users" && user.isSuperUser && (
-                  <UsersView state={state} onChange={onChange} currentUser={user} />
                 )}
               </div>
             </aside>
