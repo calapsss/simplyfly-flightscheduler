@@ -1,5 +1,5 @@
 import { useMemo, useState, useRef, useEffect } from "react";
-import type { AppState, Assignment, Availability, Block, Aircraft, User } from "../types";
+import type { AppState, Assignment, Availability, Block, Aircraft, User, Role } from "../types";
 import { DAY_FULL, DAY_LABELS, lastName, rangesOverlap } from "../types";
 import { cn } from "../utils/cn";
 import { Card, SectionTitle, Button, Input, Label, Pill } from "./ui";
@@ -11,12 +11,14 @@ type Props = {
   onChange: (next: AppState) => void;
 };
 
+type DrawerView = "blocks" | "aircraft" | "flyers" | "users";
+
 type PropsWithReset = Props & { onReset: () => void; user: User; onLogout: () => void };
 
 export function AdminDashboard({ state, onChange, onReset, user, onLogout }: PropsWithReset) {
   const [selectedDay, setSelectedDay] = useState(new Date().getDay());
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
-  const [drawerView, setDrawerView] = useState<"blocks" | "aircraft" | "flyers" | null>(null);
+  const [drawerView, setDrawerView] = useState<DrawerView | null>(null);
   const [rosterOpen, setRosterOpen] = useState(true);
   const [pendingMove, setPendingMove] = useState<{
     srcAcId: string;
@@ -542,6 +544,9 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
   const conflicts = warningsList.filter((w) => w.type === "conflict");
   const threepeats = warningsList.filter((w) => w.type === "threepeat");
   const overfours = warningsList.filter((w) => w.type === "overfour");
+  const drawerOptions: DrawerView[] = user.isSuperUser
+    ? ["blocks", "aircraft", "flyers", "users"]
+    : ["blocks", "aircraft", "flyers"];
 
   return (
     <div className="min-h-screen bg-slate-50">
@@ -566,7 +571,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
           </div>
 
           <div className="flex items-center gap-1">
-            {(["blocks", "aircraft", "flyers"] as const).map((view) => (
+            {drawerOptions.map((view) => (
               <button
                 key={view}
                 onClick={() => setDrawerView(drawerView === view ? null : view)}
@@ -576,7 +581,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                     : "text-slate-600 hover:bg-slate-100 hover:text-navy-900"
                   }`}
               >
-                {view === "blocks" ? "Blocks" : view === "aircraft" ? "Aircraft" : "Flyers"}
+                {view === "blocks" ? "Blocks" : view === "aircraft" ? "Aircraft" : view === "users" ? "Users" : "Flyers"}
               </button>
             ))}
             <div className="w-px h-5 bg-slate-200 mx-2" />
@@ -785,7 +790,10 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
               className="fixed inset-0 z-30 bg-black/10"
               onClick={() => setDrawerView(null)}
             />
-            <aside className="fixed top-0 right-0 z-40 h-full w-[420px] bg-white shadow-2xl border-l border-slate-200 overflow-y-auto">
+            <aside className={cn(
+              "fixed top-0 right-0 z-40 h-full bg-white shadow-2xl border-l border-slate-200 overflow-y-auto",
+              drawerView === "users" ? "w-[min(1040px,calc(100vw-32px))]" : "w-[420px]"
+            )}>
               <div className="sticky top-0 bg-white/80 backdrop-blur border-b border-slate-200 px-5 py-3 flex items-center justify-between z-10">
                 <span className="text-[14px] font-semibold text-navy-900 capitalize">{drawerView}</span>
                 <button
@@ -804,6 +812,9 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                 )}
                 {drawerView === "flyers" && (
                   <FlyersView state={state} onChange={onChange} compact />
+                )}
+                {drawerView === "users" && user.isSuperUser && (
+                  <UsersView state={state} onChange={onChange} currentUser={user} />
                 )}
               </div>
             </aside>
@@ -2244,6 +2255,415 @@ function BlockPicker({
           </div>
         )
       )}
+    </div>
+  );
+}
+
+/* ================================== USERS ================================= */
+
+const QUALIFICATION_OPTIONS = ["2LFE", "TP", "FL", "EL", "1LFE", "TNG", "NON-TNG", "AIF"];
+const RANK_OPTIONS = ["", "2LT", "1LT", "CPT", "MAJ", "LTC", "COL"];
+
+type UserDraft = {
+  name: string;
+  callsign: string;
+  password: string;
+  email: string;
+  role: Role;
+  active: boolean;
+  isSuperUser: boolean;
+  rank: string;
+  track: "student" | "ip";
+  qualifications: string[];
+  lesson: string;
+  dolf: string;
+};
+
+function emptyUserDraft(): UserDraft {
+  return {
+    name: "",
+    callsign: "",
+    password: "",
+    email: "",
+    role: "flyer",
+    active: true,
+    isSuperUser: false,
+    rank: "",
+    track: "student",
+    qualifications: [],
+    lesson: "",
+    dolf: "",
+  };
+}
+
+function draftFromUser(user: User): UserDraft {
+  return {
+    name: user.name,
+    callsign: user.callsign ?? "",
+    password: "",
+    email: user.email,
+    role: user.role,
+    active: user.active !== false,
+    isSuperUser: user.isSuperUser === true,
+    rank: user.rank ?? "",
+    track: user.track ?? "student",
+    qualifications: user.qualifications ?? [],
+    lesson: user.lesson ?? "",
+    dolf: user.dolf ?? "",
+  };
+}
+
+function selectClassName(className = "") {
+  return cn(
+    "w-full rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-[14px] text-navy-900 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition",
+    className
+  );
+}
+
+function UsersView({ state, onChange, currentUser }: Props & { currentUser: User }) {
+  const [draft, setDraft] = useState<UserDraft>(() => emptyUserDraft());
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [query, setQuery] = useState("");
+  const [roleFilter, setRoleFilter] = useState<"all" | Role>("all");
+  const [trackFilter, setTrackFilter] = useState<"all" | "student" | "ip">("all");
+  const [activeFilter, setActiveFilter] = useState<"all" | "active" | "inactive">("all");
+  const [error, setError] = useState<string | null>(null);
+
+  const editingUser = editingId ? state.users.find((u) => u.id === editingId) ?? null : null;
+  const isEditingCurrentSuper = editingUser?.id === currentUser.id && currentUser.isSuperUser === true;
+
+  const filteredUsers = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    return state.users
+      .filter((u) => roleFilter === "all" || u.role === roleFilter)
+      .filter((u) => trackFilter === "all" || u.track === trackFilter)
+      .filter((u) => activeFilter === "all" || (activeFilter === "active" ? u.active !== false : u.active === false))
+      .filter((u) => {
+        if (!needle) return true;
+        return [u.name, u.callsign, u.email, u.rank, u.track, u.role]
+          .some((value) => value?.toLowerCase().includes(needle));
+      })
+      .sort((a, b) => Number(a.active === false) - Number(b.active === false) || a.role.localeCompare(b.role) || a.name.localeCompare(b.name));
+  }, [state.users, query, roleFilter, trackFilter, activeFilter]);
+
+  function updateDraft(partial: Partial<UserDraft>) {
+    setDraft((current) => {
+      const next = { ...current, ...partial };
+      if (partial.role === "admin") {
+        next.track = "student";
+        next.qualifications = [];
+        next.lesson = "";
+        next.dolf = "";
+      }
+      return next;
+    });
+    setError(null);
+  }
+
+  function startCreate() {
+    setEditingId(null);
+    setDraft(emptyUserDraft());
+    setError(null);
+  }
+
+  function startEdit(user: User) {
+    setEditingId(user.id);
+    setDraft(draftFromUser(user));
+    setError(null);
+  }
+
+  function normalizeCallsign(value: string) {
+    return value.trim().toUpperCase();
+  }
+
+  function validate(excludingId: string | null) {
+    const name = draft.name.trim();
+    const callsign = normalizeCallsign(draft.callsign);
+    const email = draft.email.trim().toLowerCase();
+    if (!name) return "Name is required.";
+    if (!callsign) return "Callsign is required.";
+    if (!email) return "Email is required.";
+    if (state.users.some((u) => u.id !== excludingId && u.callsign?.toLowerCase() === callsign.toLowerCase())) {
+      return "Callsign must be unique.";
+    }
+    if (state.users.some((u) => u.id !== excludingId && u.email.toLowerCase() === email)) {
+      return "Email must be unique.";
+    }
+    return null;
+  }
+
+  function buildUser(existing?: User): User {
+    const role = draft.role;
+    const next: User = {
+      id: existing?.id ?? uid("u"),
+      name: draft.name.trim(),
+      callsign: normalizeCallsign(draft.callsign),
+      email: draft.email.trim().toLowerCase(),
+      role,
+      active: isEditingCurrentSuper ? true : draft.active,
+      isSuperUser: role === "admin" ? (isEditingCurrentSuper ? true : draft.isSuperUser) : false,
+      password: draft.password.trim() ? draft.password : existing?.password,
+    };
+
+    if (draft.rank.trim()) next.rank = draft.rank.trim();
+    if (role === "flyer") {
+      next.track = draft.track;
+      if (draft.track === "ip" && draft.qualifications.length > 0) next.qualifications = draft.qualifications;
+      if (draft.track === "student") {
+        if (draft.lesson.trim()) next.lesson = draft.lesson.trim();
+        if (draft.dolf) next.dolf = draft.dolf;
+      }
+    }
+    return next;
+  }
+
+  function saveUser(e: React.FormEvent) {
+    e.preventDefault();
+    const validationError = validate(editingId);
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    if (editingUser) {
+      const nextUser = buildUser(editingUser);
+      onChange({ ...state, users: state.users.map((u) => u.id === editingUser.id ? nextUser : u) });
+    } else {
+      onChange({ ...state, users: [buildUser(), ...state.users] });
+    }
+    startCreate();
+  }
+
+  function toggleActive(user: User) {
+    if (user.id === currentUser.id && currentUser.isSuperUser) return;
+    onChange({
+      ...state,
+      users: state.users.map((u) => u.id === user.id ? { ...u, active: u.active === false } : u),
+    });
+  }
+
+  function deleteUser(user: User) {
+    if (user.id === currentUser.id && currentUser.isSuperUser) return;
+    if (!confirm(`Delete ${user.name}? This removes availability and clears their scheduled seats.`)) return;
+    const assignments = state.assignments
+      .map((a) => ({
+        ...a,
+        pilotId: a.pilotId === user.id ? undefined : a.pilotId,
+        coPilotId: a.coPilotId === user.id ? undefined : a.coPilotId,
+      }))
+      .filter((a) => a.pilotId || a.coPilotId);
+    onChange({
+      ...state,
+      users: state.users.filter((u) => u.id !== user.id),
+      availability: state.availability.filter((a) => a.flyerId !== user.id),
+      assignments,
+    });
+    if (editingId === user.id) startCreate();
+  }
+
+  function toggleQualification(qualification: string) {
+    updateDraft({
+      qualifications: draft.qualifications.includes(qualification)
+        ? draft.qualifications.filter((q) => q !== qualification)
+        : [...draft.qualifications, qualification],
+    });
+  }
+
+  return (
+    <div className="space-y-5">
+      <SectionTitle
+        title="User management"
+        subtitle="Create accounts, manage prototype login details, and maintain roster profiles."
+        action={<Button variant="secondary" size="sm" onClick={startCreate}>New user</Button>}
+      />
+
+      <Card className="p-5">
+        <form onSubmit={saveUser} className="space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div className="md:col-span-2">
+              <Label>Name</Label>
+              <Input value={draft.name} onChange={(e) => updateDraft({ name: e.target.value })} placeholder="Full name" />
+            </div>
+            <div>
+              <Label>Role</Label>
+              <select value={draft.role} onChange={(e) => updateDraft({ role: e.target.value as Role })} className={selectClassName()}>
+                <option value="flyer">Flyer</option>
+                <option value="admin">Admin</option>
+              </select>
+            </div>
+            <div>
+              <Label>Status</Label>
+              <select
+                value={draft.active ? "active" : "inactive"}
+                onChange={(e) => updateDraft({ active: e.target.value === "active" })}
+                disabled={isEditingCurrentSuper}
+                className={selectClassName()}
+              >
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </select>
+            </div>
+            <div>
+              <Label>Callsign</Label>
+              <Input value={draft.callsign} onChange={(e) => updateDraft({ callsign: e.target.value })} placeholder="SUPER" />
+            </div>
+            <div>
+              <Label>Password</Label>
+              <Input
+                type="password"
+                value={draft.password}
+                onChange={(e) => updateDraft({ password: e.target.value })}
+                placeholder={editingUser ? "Leave blank to keep" : "Blank allowed"}
+              />
+            </div>
+            <div className="md:col-span-2">
+              <Label>Email</Label>
+              <Input type="email" value={draft.email} onChange={(e) => updateDraft({ email: e.target.value })} placeholder="name@simplyfly.aero" />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
+            <div>
+              <Label>Rank</Label>
+              <select value={draft.rank} onChange={(e) => updateDraft({ rank: e.target.value })} className={selectClassName()}>
+                {RANK_OPTIONS.map((rank) => (
+                  <option key={rank || "none"} value={rank}>{rank || "None"}</option>
+                ))}
+              </select>
+            </div>
+            {draft.role === "admin" ? (
+              <label className="md:col-span-3 flex items-center gap-2 mt-7 text-[13px] text-navy-900">
+                <input
+                  type="checkbox"
+                  checked={draft.isSuperUser}
+                  onChange={(e) => updateDraft({ isSuperUser: e.target.checked })}
+                  disabled={isEditingCurrentSuper}
+                  className="h-4 w-4 rounded border-slate-300 text-sky-600"
+                />
+                Super user access
+              </label>
+            ) : (
+              <>
+                <div>
+                  <Label>Track</Label>
+                  <select value={draft.track} onChange={(e) => updateDraft({ track: e.target.value as "student" | "ip" })} className={selectClassName()}>
+                    <option value="student">Student</option>
+                    <option value="ip">IP</option>
+                  </select>
+                </div>
+                {draft.track === "student" ? (
+                  <>
+                    <div>
+                      <Label>Lesson</Label>
+                      <Input value={draft.lesson} onChange={(e) => updateDraft({ lesson: e.target.value })} placeholder="LSN 5" />
+                    </div>
+                    <div>
+                      <Label>DOLF</Label>
+                      <Input type="date" value={draft.dolf} onChange={(e) => updateDraft({ dolf: e.target.value })} />
+                    </div>
+                  </>
+                ) : (
+                  <div className="md:col-span-2">
+                    <Label>Qualifications</Label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {QUALIFICATION_OPTIONS.map((qualification) => {
+                        const checked = draft.qualifications.includes(qualification);
+                        return (
+                          <button
+                            key={qualification}
+                            type="button"
+                            onClick={() => toggleQualification(qualification)}
+                            className={cn(
+                              "px-2 py-1 rounded-md text-[11px] font-mono border transition",
+                              checked ? "bg-sky-100 text-sky-800 border-sky-300" : "bg-white text-slate-500 border-slate-200 hover:border-slate-300"
+                            )}
+                          >
+                            {qualification}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {error && <p className="text-[12.5px] text-red-600">{error}</p>}
+          <div className="flex justify-end gap-2">
+            {editingId && <Button type="button" variant="secondary" onClick={startCreate}>Cancel edit</Button>}
+            <Button type="submit">{editingId ? "Save user" : "Create user"}</Button>
+          </div>
+        </form>
+      </Card>
+
+      <Card className="p-5">
+        <div className="grid grid-cols-1 md:grid-cols-[1fr_130px_130px_130px] gap-3 mb-4">
+          <Input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search name, callsign, email, role..." />
+          <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value as "all" | Role)} className={selectClassName("!py-2")}>
+            <option value="all">All roles</option>
+            <option value="flyer">Flyers</option>
+            <option value="admin">Admins</option>
+          </select>
+          <select value={trackFilter} onChange={(e) => setTrackFilter(e.target.value as "all" | "student" | "ip")} className={selectClassName("!py-2")}>
+            <option value="all">All tracks</option>
+            <option value="student">Students</option>
+            <option value="ip">IPs</option>
+          </select>
+          <select value={activeFilter} onChange={(e) => setActiveFilter(e.target.value as "all" | "active" | "inactive")} className={selectClassName("!py-2")}>
+            <option value="all">All status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+          </select>
+        </div>
+
+        <div className="space-y-2">
+          {filteredUsers.map((managedUser) => {
+            const assignments = state.assignments.filter((a) => a.pilotId === managedUser.id || a.coPilotId === managedUser.id);
+            const availabilityCount = state.availability.filter((a) => a.flyerId === managedUser.id).length;
+            const isSelf = managedUser.id === currentUser.id && currentUser.isSuperUser;
+            return (
+              <div key={managedUser.id} className="rounded-lg border border-slate-200 p-3">
+                <div className="flex flex-col lg:flex-row lg:items-center gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-semibold text-navy-900">{managedUser.name}</span>
+                      {managedUser.rank && <Pill tone="sky">{managedUser.rank}</Pill>}
+                      <Pill tone={managedUser.role === "admin" ? "navy" : "slate"}>{managedUser.role}</Pill>
+                      {managedUser.isSuperUser && <Pill tone="amber">super</Pill>}
+                      <Pill tone={managedUser.active === false ? "slate" : "green"}>{managedUser.active === false ? "inactive" : "active"}</Pill>
+                    </div>
+                    <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[12px] text-slate-500">
+                      <span className="font-mono">{managedUser.callsign || "NO-CALLSIGN"}</span>
+                      <span>{managedUser.email}</span>
+                      {managedUser.track && <span>{managedUser.track === "ip" ? "IP" : "Student"}</span>}
+                      {managedUser.lesson && <span>Lesson {managedUser.lesson}</span>}
+                      {managedUser.dolf && <span>DOLF {managedUser.dolf}</span>}
+                    </div>
+                    {managedUser.qualifications && managedUser.qualifications.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {managedUser.qualifications.map((qualification) => <Pill key={qualification} tone="sky">{qualification}</Pill>)}
+                      </div>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-[11px] text-slate-500 lg:w-[330px]">
+                    <div className="rounded-md bg-slate-50 p-2"><strong className="block text-navy-900 text-[14px]">{assignments.length}</strong>sorties</div>
+                    <div className="rounded-md bg-slate-50 p-2"><strong className="block text-navy-900 text-[14px]">{availabilityCount}</strong>ranges</div>
+                    <Button size="sm" variant="secondary" onClick={() => startEdit(managedUser)}>Edit</Button>
+                    <Button size="sm" variant={managedUser.active === false ? "secondary" : "ghost"} onClick={() => toggleActive(managedUser)} disabled={isSelf}>
+                      {managedUser.active === false ? "Activate" : "Deactivate"}
+                    </Button>
+                  </div>
+                  <Button size="sm" variant="danger" onClick={() => deleteUser(managedUser)} disabled={isSelf}>Delete</Button>
+                </div>
+              </div>
+            );
+          })}
+          {filteredUsers.length === 0 && (
+            <p className="text-center text-[13px] text-slate-500 py-8">No users match the current filters.</p>
+          )}
+        </div>
+      </Card>
     </div>
   );
 }

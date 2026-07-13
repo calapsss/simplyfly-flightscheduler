@@ -28,6 +28,11 @@ export function Login({ users, onLogin }: LoginProps) {
       return;
     }
 
+    if (match.active === false) {
+      setError("This account is inactive.");
+      return;
+    }
+
     if (match.password && match.password !== password) {
       setError("Incorrect password.");
       return;

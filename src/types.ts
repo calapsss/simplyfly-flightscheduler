@@ -6,6 +6,8 @@ export type User = {
   callsign?: string;
   rank?: string;  // 2LT, 1LT, CPT, MAJ, LTC, COL
   password?: string;
+  isSuperUser?: boolean;
+  active?: boolean;
   track?: "student" | "ip";
   qualifications?: string[];
   lesson?: string;   // Due Lesson for students

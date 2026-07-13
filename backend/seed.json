@@ -1,11 +1,24 @@
 {
   "users": [
     {
+      "id": "u-super",
+      "name": "Super User",
+      "callsign": "SUPER",
+      "password": "",
+      "isSuperUser": true,
+      "active": true,
+      "role": "admin",
+      "email": "super@simplyfly.aero"
+    },
+    {
       "id": "u-admin",
       "name": "Ops Chief",
       "callsign": "TOWER",
       "role": "admin",
-      "email": "admin@simplyfly.aero"
+      "email": "admin@simplyfly.aero",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-bayaca",
@@ -13,7 +26,11 @@
       "rank": "1LT",
       "track": "ip",
       "role": "flyer",
-      "email": "bayaca@simplyfly.aero"
+      "email": "bayaca@simplyfly.aero",
+      "callsign": "BAYACA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-beltran",
@@ -21,7 +38,11 @@
       "rank": "1LT",
       "track": "ip",
       "role": "flyer",
-      "email": "beltran@simplyfly.aero"
+      "email": "beltran@simplyfly.aero",
+      "callsign": "BELTRAN",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-crisologo",
@@ -29,7 +50,11 @@
       "rank": "1LT",
       "track": "ip",
       "role": "flyer",
-      "email": "crisologo@simplyfly.aero"
+      "email": "crisologo@simplyfly.aero",
+      "callsign": "CRISOLOGO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-loyao",
@@ -37,7 +62,11 @@
       "rank": "1LT",
       "track": "ip",
       "role": "flyer",
-      "email": "loyao@simplyfly.aero"
+      "email": "loyao@simplyfly.aero",
+      "callsign": "LOYAO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-magabo",
@@ -45,7 +74,11 @@
       "rank": "1LT",
       "track": "ip",
       "role": "flyer",
-      "email": "magabo@simplyfly.aero"
+      "email": "magabo@simplyfly.aero",
+      "callsign": "MAGABO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-potutan",
@@ -53,7 +86,11 @@
       "rank": "1LT",
       "track": "ip",
       "role": "flyer",
-      "email": "potutan@simplyfly.aero"
+      "email": "potutan@simplyfly.aero",
+      "callsign": "POTUTAN",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-rabi",
@@ -61,7 +98,11 @@
       "rank": "1LT",
       "track": "ip",
       "role": "flyer",
-      "email": "rabi@simplyfly.aero"
+      "email": "rabi@simplyfly.aero",
+      "callsign": "RABI",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-rafal",
@@ -69,7 +110,11 @@
       "rank": "1LT",
       "track": "ip",
       "role": "flyer",
-      "email": "rafal@simplyfly.aero"
+      "email": "rafal@simplyfly.aero",
+      "callsign": "RAFAL",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-sayod",
@@ -77,7 +122,11 @@
       "rank": "1LT",
       "track": "ip",
       "role": "flyer",
-      "email": "sayod@simplyfly.aero"
+      "email": "sayod@simplyfly.aero",
+      "callsign": "SAYOD",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-sercado",
@@ -85,7 +134,11 @@
       "rank": "1LT",
       "track": "ip",
       "role": "flyer",
-      "email": "sercado@simplyfly.aero"
+      "email": "sercado@simplyfly.aero",
+      "callsign": "SERCADO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-vergara",
@@ -93,7 +146,11 @@
       "rank": "1LT",
       "track": "ip",
       "role": "flyer",
-      "email": "vergara@simplyfly.aero"
+      "email": "vergara@simplyfly.aero",
+      "callsign": "VERGARA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-asi",
@@ -101,7 +158,11 @@
       "rank": "CPT",
       "track": "ip",
       "role": "flyer",
-      "email": "asi@simplyfly.aero"
+      "email": "asi@simplyfly.aero",
+      "callsign": "ASI",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-baccay",
@@ -109,7 +170,11 @@
       "rank": "CPT",
       "track": "ip",
       "role": "flyer",
-      "email": "baccay@simplyfly.aero"
+      "email": "baccay@simplyfly.aero",
+      "callsign": "BACCAY",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-braza",
@@ -117,7 +182,11 @@
       "rank": "CPT",
       "track": "ip",
       "role": "flyer",
-      "email": "braza@simplyfly.aero"
+      "email": "braza@simplyfly.aero",
+      "callsign": "BRAZA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-cruz",
@@ -125,7 +194,11 @@
       "rank": "CPT",
       "track": "ip",
       "role": "flyer",
-      "email": "cruz@simplyfly.aero"
+      "email": "cruz@simplyfly.aero",
+      "callsign": "CRUZ",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-destajo",
@@ -133,7 +206,11 @@
       "rank": "CPT",
       "track": "ip",
       "role": "flyer",
-      "email": "destajo@simplyfly.aero"
+      "email": "destajo@simplyfly.aero",
+      "callsign": "DESTAJO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-estoesta",
@@ -141,7 +218,11 @@
       "rank": "CPT",
       "track": "ip",
       "role": "flyer",
-      "email": "estoesta@simplyfly.aero"
+      "email": "estoesta@simplyfly.aero",
+      "callsign": "ESTOESTA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-iglesia",
@@ -149,7 +230,11 @@
       "rank": "CPT",
       "track": "ip",
       "role": "flyer",
-      "email": "iglesia@simplyfly.aero"
+      "email": "iglesia@simplyfly.aero",
+      "callsign": "IGLESIA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-magsumbol",
@@ -157,7 +242,11 @@
       "rank": "CPT",
       "track": "ip",
       "role": "flyer",
-      "email": "magsumbol@simplyfly.aero"
+      "email": "magsumbol@simplyfly.aero",
+      "callsign": "MAGSUMBOL",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-orio",
@@ -165,7 +254,11 @@
       "rank": "CPT",
       "track": "ip",
       "role": "flyer",
-      "email": "orio@simplyfly.aero"
+      "email": "orio@simplyfly.aero",
+      "callsign": "ORIO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-sarikin",
@@ -173,7 +266,11 @@
       "rank": "CPT",
       "track": "ip",
       "role": "flyer",
-      "email": "sarikin@simplyfly.aero"
+      "email": "sarikin@simplyfly.aero",
+      "callsign": "SARIKIN",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-batay-an",
@@ -181,7 +278,11 @@
       "rank": "LTC",
       "track": "ip",
       "role": "flyer",
-      "email": "batay-an@simplyfly.aero"
+      "email": "batay-an@simplyfly.aero",
+      "callsign": "BATAYAN",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-bechayda",
@@ -189,7 +290,11 @@
       "rank": "LTC",
       "track": "ip",
       "role": "flyer",
-      "email": "bechayda@simplyfly.aero"
+      "email": "bechayda@simplyfly.aero",
+      "callsign": "BECHAYDA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-cayabyab",
@@ -197,7 +302,11 @@
       "rank": "LTC",
       "track": "ip",
       "role": "flyer",
-      "email": "cayabyab@simplyfly.aero"
+      "email": "cayabyab@simplyfly.aero",
+      "callsign": "CAYABYAB",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-acar",
@@ -205,7 +314,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "acar@simplyfly.aero"
+      "email": "acar@simplyfly.aero",
+      "callsign": "ACAR",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-acojedo",
@@ -213,7 +326,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "acojedo@simplyfly.aero"
+      "email": "acojedo@simplyfly.aero",
+      "callsign": "ACOJEDO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-aquino-h",
@@ -221,7 +338,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "aquino-h@simplyfly.aero"
+      "email": "aquino-h@simplyfly.aero",
+      "callsign": "AQUINOH",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-aquino-ks",
@@ -229,7 +350,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "aquino-ks@simplyfly.aero"
+      "email": "aquino-ks@simplyfly.aero",
+      "callsign": "AQUINOKS",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-asistores",
@@ -237,7 +362,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "asistores@simplyfly.aero"
+      "email": "asistores@simplyfly.aero",
+      "callsign": "ASISTORES",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-calayag",
@@ -245,7 +374,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "calayag@simplyfly.aero"
+      "email": "calayag@simplyfly.aero",
+      "callsign": "CALAYAG",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-dahino",
@@ -253,7 +386,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "dahino@simplyfly.aero"
+      "email": "dahino@simplyfly.aero",
+      "callsign": "DAHINO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-dayag",
@@ -261,7 +398,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "dayag@simplyfly.aero"
+      "email": "dayag@simplyfly.aero",
+      "callsign": "DAYAG",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-estillero",
@@ -269,7 +410,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "estillero@simplyfly.aero"
+      "email": "estillero@simplyfly.aero",
+      "callsign": "ESTILLERO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-faurillo",
@@ -277,7 +422,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "faurillo@simplyfly.aero"
+      "email": "faurillo@simplyfly.aero",
+      "callsign": "FAURILLO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-gadot",
@@ -285,7 +434,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "gadot@simplyfly.aero"
+      "email": "gadot@simplyfly.aero",
+      "callsign": "GADOT",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-macatangay",
@@ -293,7 +446,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "macatangay@simplyfly.aero"
+      "email": "macatangay@simplyfly.aero",
+      "callsign": "MACATANGAY",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-makalintal",
@@ -301,7 +458,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "makalintal@simplyfly.aero"
+      "email": "makalintal@simplyfly.aero",
+      "callsign": "MAKALINTAL",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-mauhay",
@@ -309,7 +470,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "mauhay@simplyfly.aero"
+      "email": "mauhay@simplyfly.aero",
+      "callsign": "MAUHAY",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-monis",
@@ -317,7 +482,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "monis@simplyfly.aero"
+      "email": "monis@simplyfly.aero",
+      "callsign": "MONIS",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-montepio",
@@ -325,7 +494,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "montepio@simplyfly.aero"
+      "email": "montepio@simplyfly.aero",
+      "callsign": "MONTEPIO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-olan",
@@ -333,7 +506,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "olan@simplyfly.aero"
+      "email": "olan@simplyfly.aero",
+      "callsign": "OLAN",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-pontillas",
@@ -341,7 +518,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "pontillas@simplyfly.aero"
+      "email": "pontillas@simplyfly.aero",
+      "callsign": "PONTILLAS",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-salcedo",
@@ -349,7 +530,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "salcedo@simplyfly.aero"
+      "email": "salcedo@simplyfly.aero",
+      "callsign": "SALCEDO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-ticman-mm",
@@ -357,7 +542,11 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "ticman-mm@simplyfly.aero"
+      "email": "ticman-mm@simplyfly.aero",
+      "callsign": "TICMANMM",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-torres",
@@ -365,217 +554,341 @@
       "rank": "MAJ",
       "track": "ip",
       "role": "flyer",
-      "email": "torres@simplyfly.aero"
+      "email": "torres@simplyfly.aero",
+      "callsign": "TORRES",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-aganon",
       "name": "Aganon",
       "track": "student",
       "role": "flyer",
-      "email": "aganon@simplyfly.aero"
+      "email": "aganon@simplyfly.aero",
+      "callsign": "AGANON",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-albay",
       "name": "Albay",
       "track": "student",
       "role": "flyer",
-      "email": "albay@simplyfly.aero"
+      "email": "albay@simplyfly.aero",
+      "callsign": "ALBAY",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-austria",
       "name": "Austria",
       "track": "student",
       "role": "flyer",
-      "email": "austria@simplyfly.aero"
+      "email": "austria@simplyfly.aero",
+      "callsign": "AUSTRIA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-aviquivil",
       "name": "Aviquivil",
       "track": "student",
       "role": "flyer",
-      "email": "aviquivil@simplyfly.aero"
+      "email": "aviquivil@simplyfly.aero",
+      "callsign": "AVIQUIVIL",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-barro",
       "name": "Barro",
       "track": "student",
       "role": "flyer",
-      "email": "barro@simplyfly.aero"
+      "email": "barro@simplyfly.aero",
+      "callsign": "BARRO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-bersola",
       "name": "Bersola",
       "track": "student",
       "role": "flyer",
-      "email": "bersola@simplyfly.aero"
+      "email": "bersola@simplyfly.aero",
+      "callsign": "BERSOLA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-bugaling",
       "name": "Bugaling",
       "track": "student",
       "role": "flyer",
-      "email": "bugaling@simplyfly.aero"
+      "email": "bugaling@simplyfly.aero",
+      "callsign": "BUGALING",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-caisip",
       "name": "Caisip",
       "track": "student",
       "role": "flyer",
-      "email": "caisip@simplyfly.aero"
+      "email": "caisip@simplyfly.aero",
+      "callsign": "CAISIP",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-calumba",
       "name": "Calumba",
       "track": "student",
       "role": "flyer",
-      "email": "calumba@simplyfly.aero"
+      "email": "calumba@simplyfly.aero",
+      "callsign": "CALUMBA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-cendreda",
       "name": "Cendreda",
       "track": "student",
       "role": "flyer",
-      "email": "cendreda@simplyfly.aero"
+      "email": "cendreda@simplyfly.aero",
+      "callsign": "CENDREDA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-dimaculangan",
       "name": "Dimaculangan",
       "track": "student",
       "role": "flyer",
-      "email": "dimaculangan@simplyfly.aero"
+      "email": "dimaculangan@simplyfly.aero",
+      "callsign": "DIMACULANGAN",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-garcia",
       "name": "Garcia",
       "track": "student",
       "role": "flyer",
-      "email": "garcia@simplyfly.aero"
+      "email": "garcia@simplyfly.aero",
+      "callsign": "GARCIA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-gentallan",
       "name": "Gentallan",
       "track": "student",
       "role": "flyer",
-      "email": "gentallan@simplyfly.aero"
+      "email": "gentallan@simplyfly.aero",
+      "callsign": "GENTALLAN",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-gonzales",
       "name": "Gonzales",
       "track": "student",
       "role": "flyer",
-      "email": "gonzales@simplyfly.aero"
+      "email": "gonzales@simplyfly.aero",
+      "callsign": "GONZALES",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-mendoza",
       "name": "Mendoza",
       "track": "student",
       "role": "flyer",
-      "email": "mendoza@simplyfly.aero"
+      "email": "mendoza@simplyfly.aero",
+      "callsign": "MENDOZA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-ocampo",
       "name": "Ocampo",
       "track": "student",
       "role": "flyer",
-      "email": "ocampo@simplyfly.aero"
+      "email": "ocampo@simplyfly.aero",
+      "callsign": "OCAMPO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-platon",
       "name": "Platon",
       "track": "student",
       "role": "flyer",
-      "email": "platon@simplyfly.aero"
+      "email": "platon@simplyfly.aero",
+      "callsign": "PLATON",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-poblete",
       "name": "Poblete",
       "track": "student",
       "role": "flyer",
-      "email": "poblete@simplyfly.aero"
+      "email": "poblete@simplyfly.aero",
+      "callsign": "POBLETE",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-quimson",
       "name": "Quimson",
       "track": "student",
       "role": "flyer",
-      "email": "quimson@simplyfly.aero"
+      "email": "quimson@simplyfly.aero",
+      "callsign": "QUIMSON",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-real",
       "name": "Real",
       "track": "student",
       "role": "flyer",
-      "email": "real@simplyfly.aero"
+      "email": "real@simplyfly.aero",
+      "callsign": "REAL",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-recinto",
       "name": "Recinto",
       "track": "student",
       "role": "flyer",
-      "email": "recinto@simplyfly.aero"
+      "email": "recinto@simplyfly.aero",
+      "callsign": "RECINTO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-reyeg",
       "name": "Reyeg",
       "track": "student",
       "role": "flyer",
-      "email": "reyeg@simplyfly.aero"
+      "email": "reyeg@simplyfly.aero",
+      "callsign": "REYEG",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-rocafort",
       "name": "Rocafort",
       "track": "student",
       "role": "flyer",
-      "email": "rocafort@simplyfly.aero"
+      "email": "rocafort@simplyfly.aero",
+      "callsign": "ROCAFORT",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-romero",
       "name": "Romero",
       "track": "student",
       "role": "flyer",
-      "email": "romero@simplyfly.aero"
+      "email": "romero@simplyfly.aero",
+      "callsign": "ROMERO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-salon",
       "name": "Salon",
       "track": "student",
       "role": "flyer",
-      "email": "salon@simplyfly.aero"
+      "email": "salon@simplyfly.aero",
+      "callsign": "SALON",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-santos",
       "name": "Santos",
       "track": "student",
       "role": "flyer",
-      "email": "santos@simplyfly.aero"
+      "email": "santos@simplyfly.aero",
+      "callsign": "SANTOS",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-sayson",
       "name": "Sayson",
       "track": "student",
       "role": "flyer",
-      "email": "sayson@simplyfly.aero"
+      "email": "sayson@simplyfly.aero",
+      "callsign": "SAYSON",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-silverio",
       "name": "Silverio",
       "track": "student",
       "role": "flyer",
-      "email": "silverio@simplyfly.aero"
+      "email": "silverio@simplyfly.aero",
+      "callsign": "SILVERIO",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-taburaza",
       "name": "Taburaza",
       "track": "student",
       "role": "flyer",
-      "email": "taburaza@simplyfly.aero"
+      "email": "taburaza@simplyfly.aero",
+      "callsign": "TABURAZA",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     },
     {
       "id": "u-vestal",
       "name": "Vestal",
       "track": "student",
       "role": "flyer",
-      "email": "vestal@simplyfly.aero"
+      "email": "vestal@simplyfly.aero",
+      "callsign": "VESTAL",
+      "password": "",
+      "isSuperUser": false,
+      "active": true
     }
   ],
   "blocks": [

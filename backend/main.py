@@ -29,6 +29,8 @@ class User(BaseModel):
     callsign: str | None = None
     rank: str | None = None
     password: str | None = None
+    isSuperUser: bool = False
+    active: bool = True
     track: Literal["student", "ip"] | None = None
     qualifications: list[str] = Field(default_factory=list)
     lesson: str | None = None
@@ -115,6 +117,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
           callsign TEXT,
           rank TEXT,
           password TEXT,
+          is_super_user INTEGER NOT NULL DEFAULT 0,
+          active INTEGER NOT NULL DEFAULT 1,
           track TEXT CHECK (track IN ('student', 'ip') OR track IS NULL),
           qualifications_json TEXT NOT NULL DEFAULT '[]',
           lesson TEXT,
@@ -167,6 +171,14 @@ def create_schema(conn: sqlite3.Connection) -> None:
         INSERT OR IGNORE INTO schema_migrations (version) VALUES (1);
         """
     )
+    ensure_user_column(conn, "is_super_user", "INTEGER NOT NULL DEFAULT 0")
+    ensure_user_column(conn, "active", "INTEGER NOT NULL DEFAULT 1")
+
+
+def ensure_user_column(conn: sqlite3.Connection, name: str, definition: str) -> None:
+    columns = {row["name"] for row in conn.execute("PRAGMA table_info(users)")}
+    if name not in columns:
+        conn.execute(f"ALTER TABLE users ADD COLUMN {name} {definition}")
 
 
 def load_seed_state() -> AppState:
@@ -198,9 +210,9 @@ def replace_state(conn: sqlite3.Connection, state: AppState) -> None:
         conn.executemany(
             """
             INSERT INTO users (
-              id, name, callsign, rank, password, track, qualifications_json,
+              id, name, callsign, rank, password, is_super_user, active, track, qualifications_json,
               lesson, dolf, role, email
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             [
                 (
@@ -209,6 +221,8 @@ def replace_state(conn: sqlite3.Connection, state: AppState) -> None:
                     user.callsign,
                     user.rank,
                     user.password,
+                    int(user.isSuperUser),
+                    int(user.active),
                     user.track,
                     json.dumps(user.qualifications),
                     user.lesson,
@@ -276,6 +290,8 @@ def read_state(conn: sqlite3.Connection) -> AppState:
             callsign=row["callsign"],
             rank=row["rank"],
             password=row["password"],
+            isSuperUser=bool(row["is_super_user"]),
+            active=bool(row["active"]),
             track=row["track"],
             qualifications=json.loads(row["qualifications_json"]),
             lesson=row["lesson"],
