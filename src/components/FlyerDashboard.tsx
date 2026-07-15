@@ -1,5 +1,5 @@
 import { useState } from "react";
-import type { AppState, Availability, User } from "../types";
+import type { AppState, Availability, UnavailabilityRequest, User } from "../types";
 import { DAY_FULL, DAY_LABELS, lastName, rangesOverlap } from "../types";
 import { Card, SectionTitle, Button, Input, Label, Stat, Pill } from "./ui";
 import { PlaneIcon } from "./Logo";
@@ -13,6 +13,7 @@ type Props = {
 
 export function FlyerDashboard({ state, user, onChange }: Props) {
   const myAvail = state.availability.filter((a) => a.flyerId === user.id);
+  const myUnavailableRequests = state.unavailabilityRequests.filter((a) => a.flyerId === user.id);
   const myAssignments = state.assignments.filter(
     (a) => a.pilotId === user.id || a.coPilotId === user.id
   );
@@ -20,6 +21,7 @@ export function FlyerDashboard({ state, user, onChange }: Props) {
   const [day, setDay] = useState<number>(new Date().getDay());
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("12:00");
+  const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   function add(e: React.FormEvent) {
@@ -41,11 +43,56 @@ export function FlyerDashboard({ state, user, onChange }: Props) {
     setError(null);
   }
 
+  function requestUnavailable(e: React.FormEvent) {
+    e.preventDefault();
+    const trimmedReason = reason.trim();
+    if (start >= end) {
+      setError("End time must be after start time.");
+      return;
+    }
+    if (trimmedReason.length < 5) {
+      setError("Please add a valid reason for Ops approval.");
+      return;
+    }
+    const conflict = myUnavailableRequests.find(
+      (request) =>
+        request.status !== "rejected" &&
+        request.day === day &&
+        rangesOverlap(request.start, request.end, start, end)
+    );
+    if (conflict) {
+      setError("This overlaps with an existing unavailable request.");
+      return;
+    }
+    const request: UnavailabilityRequest = {
+      id: uid("unav"),
+      flyerId: user.id,
+      day,
+      start,
+      end,
+      reason: trimmedReason,
+      status: "pending",
+    };
+    onChange({ ...state, unavailabilityRequests: [...state.unavailabilityRequests, request] });
+    setReason("");
+    setError(null);
+  }
+
   function remove(id: string) {
     onChange({ ...state, availability: state.availability.filter((a) => a.id !== id) });
   }
 
+  function cancelUnavailableRequest(id: string) {
+    onChange({
+      ...state,
+      unavailabilityRequests: state.unavailabilityRequests.filter((request) => request.id !== id),
+    });
+  }
+
   const totalHours = myAvail.reduce((sum, a) => sum + hours(a.start, a.end), 0);
+  const isStudent = user.track === "student";
+  const approvedUnavailable = myUnavailableRequests.filter((request) => request.status === "approved").length;
+  const pendingUnavailable = myUnavailableRequests.filter((request) => request.status === "pending").length;
   const upcoming = myAssignments
     .map((a) => {
       const block = state.blocks.find((b) => b.id === a.blockId);
@@ -62,19 +109,24 @@ export function FlyerDashboard({ state, user, onChange }: Props) {
     <div className="space-y-6">
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Stat label="Time ranges" value={myAvail.length} hint="declared this week" />
-        <Stat label="Total hours" value={totalHours.toFixed(1)} hint="available" tone="sky" />
+        <Stat label={isStudent ? "Default" : "Time ranges"} value={isStudent ? "Available" : myAvail.length} hint={isStudent ? "unless approved unavailable" : "declared this week"} />
+        <Stat label={isStudent ? "Unavailable" : "Total hours"} value={isStudent ? approvedUnavailable : totalHours.toFixed(1)} hint={isStudent ? `${pendingUnavailable} pending` : "available"} tone="sky" />
         <Stat label="Scheduled" value={myAssignments.length} hint="sorties assigned" />
         <Stat label="Status" value="Active" hint="ready to fly" />
       </div>
 
-      {/* Add availability */}
+      {/* Add availability / unavailability */}
       <Card className="p-6">
         <SectionTitle
-          title="Declare your availability"
-          subtitle="Add a time range on a day you're able to fly. Ops will match you to aircraft within this window."
+          title={isStudent ? "Request unavailable time" : "Declare your availability"}
+          subtitle={
+            isStudent
+              ? "Students are available by default. Submit unavailable windows with a valid reason for Ops approval."
+              : "Add a time range on a day you're able to fly. Ops will match you to aircraft within this window."
+          }
         />
-        <form onSubmit={add} className="grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-3 items-end">
+        <form onSubmit={isStudent ? requestUnavailable : add} className={isStudent ? "space-y-3" : "grid grid-cols-1 md:grid-cols-[1fr_1fr_1fr_auto] gap-3 items-end"}>
+          <div className={isStudent ? "grid grid-cols-1 md:grid-cols-3 gap-3" : "contents"}>
           <div>
             <Label>Day</Label>
             <select
@@ -95,15 +147,72 @@ export function FlyerDashboard({ state, user, onChange }: Props) {
             <Label>To</Label>
             <Input type="time" value={end} onChange={(e) => setEnd(e.target.value)} />
           </div>
-          <Button type="submit" className="h-[42px]">+ Add range</Button>
+          {!isStudent && <Button type="submit" className="h-[42px]">+ Add range</Button>}
+          </div>
+          {isStudent && (
+            <>
+              <div>
+                <Label>Reason</Label>
+                <textarea
+                  value={reason}
+                  onChange={(e) => setReason(e.target.value)}
+                  placeholder="e.g. Medical appointment, academic requirement, command duty"
+                  className="w-full min-h-[86px] rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 text-[14px] text-navy-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500/30 focus:border-sky-500 transition"
+                />
+              </div>
+              <Button type="submit" className="h-[42px]">Submit unavailable request</Button>
+            </>
+          )}
         </form>
         {error && <p className="text-[12.5px] text-red-600 mt-3">{error}</p>}
       </Card>
 
-      {/* My availability by day */}
+      {/* My availability / unavailability by day */}
       <Card className="p-6">
-        <SectionTitle title="My weekly availability" subtitle="Click × to remove a range." />
-        {myAvail.length === 0 ? (
+        <SectionTitle
+          title={isStudent ? "My unavailable requests" : "My weekly availability"}
+          subtitle={isStudent ? "Pending requests need Ops approval before they affect scheduling." : "Click × to remove a range."}
+        />
+        {isStudent ? (
+          myUnavailableRequests.length === 0 ? (
+            <p className="text-[13px] text-slate-500 py-8 text-center border border-dashed border-slate-200 rounded-xl">
+              No unavailable requests. You are considered available for all operating blocks.
+            </p>
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              {myUnavailableRequests
+                .slice()
+                .sort((a, b) => a.day - b.day || a.start.localeCompare(b.start))
+                .map((request) => (
+                  <div key={request.id} className="p-4 rounded-xl border border-slate-200 bg-white">
+                    <div className="flex items-start gap-3">
+                      <div className="w-12 h-12 rounded-lg bg-slate-100 text-navy-900 flex flex-col items-center justify-center">
+                        <div className="text-[10px] font-semibold uppercase tracking-wider">{DAY_LABELS[request.day]}</div>
+                        <div className="text-[10px] text-slate-500">{hours(request.start, request.end).toFixed(1)}h</div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-[13px] font-semibold text-navy-900">{DAY_FULL[request.day]}</div>
+                        <div className="text-[12px] font-mono text-slate-500">{request.start} – {request.end}</div>
+                        <div className="text-[12px] text-slate-500 mt-1">{request.reason}</div>
+                        <Pill tone={request.status === "approved" ? "green" : request.status === "rejected" ? "slate" : "amber"} className="mt-2">
+                          {request.status}
+                        </Pill>
+                      </div>
+                      {request.status === "pending" && (
+                        <button
+                          onClick={() => cancelUnavailableRequest(request.id)}
+                          className="w-7 h-7 rounded-md text-slate-400 hover:text-red-600 hover:bg-red-50 transition"
+                          aria-label="Cancel request"
+                        >
+                          ✕
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                ))}
+            </div>
+          )
+        ) : myAvail.length === 0 ? (
           <p className="text-[13px] text-slate-500 py-8 text-center border border-dashed border-slate-200 rounded-xl">
             No availability declared yet. Add a time range above.
           </p>

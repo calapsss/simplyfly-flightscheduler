@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from "react";
-import type { AppState, Assignment, Availability, Block, Aircraft, User, Role } from "../types";
-import { DAY_FULL, DAY_LABELS, lastName, rangesOverlap } from "../types";
+import type { AppState, Assignment, Availability, Block, Aircraft, User, Role, UnavailabilityRequest } from "../types";
+import { DAY_FULL, DAY_LABELS, isFlyerAvailableForBlock, lastName, rangesOverlap } from "../types";
 import { cn } from "../utils/cn";
 import { Card, SectionTitle, Button, Input, Label, Pill } from "./ui";
 import { Logo, PlaneIcon } from "./Logo";
@@ -58,11 +58,12 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
   const availableForBlock = useMemo(() => {
     if (!selectedBlock) return new Set<string>();
     return new Set(
-      state.availability
-        .filter((a) => a.day === selectedBlock.day && rangesOverlap(a.start, a.end, selectedBlock.start, selectedBlock.end))
-        .map((a) => a.flyerId)
+      state.users
+        .filter((u) => u.role === "flyer")
+        .filter((u) => isFlyerAvailableForBlock(u, selectedBlock, state.availability, state.unavailabilityRequests))
+        .map((u) => u.id)
     );
-  }, [selectedBlock, state.availability]);
+  }, [selectedBlock, state.availability, state.unavailabilityRequests, state.users]);
 
   const rankOrder = useMemo(() => {
     const order = new Map<string, number>();
@@ -158,9 +159,25 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
     return result;
   }, [state.assignments, dayBlocks]);
 
+  const unavailableCells = useMemo(() => {
+    const result = new Set<string>();
+    state.assignments.forEach((assignment) => {
+      const block = state.blocks.find((item) => item.id === assignment.blockId);
+      if (!block || block.day !== selectedDay) return;
+      const hasUnavailableCrew = [assignment.pilotId, assignment.coPilotId].some((flyerId) => {
+        if (!flyerId) return false;
+        const flyer = state.users.find((item) => item.id === flyerId);
+        return !!flyer && !isFlyerAvailableForBlock(flyer, block, state.availability, state.unavailabilityRequests);
+      });
+      if (hasUnavailableCrew) result.add(`${assignment.aircraftId}:${assignment.blockId}`);
+    });
+    return result;
+  }, [selectedDay, state.assignments, state.availability, state.blocks, state.unavailabilityRequests, state.users]);
+
   const warningsList = useMemo(() => {
-    const list: { flyerName: string; type: "conflict" | "threepeat" | "overfour" }[] = [];
+    const list: { flyerName: string; type: "conflict" | "unavailable" | "threepeat" | "overfour" }[] = [];
     const conflictFlyers = new Set<string>();
+    const unavailableFlyers = new Set<string>();
     const threepeatFlyers = new Set<string>();
     const overfourFlyers = new Set<string>();
 
@@ -169,6 +186,10 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
       if (conflictingCells.has(cellKey)) {
         if (a.pilotId) conflictFlyers.add(a.pilotId);
         if (a.coPilotId) conflictFlyers.add(a.coPilotId);
+      }
+      if (unavailableCells.has(cellKey)) {
+        if (a.pilotId) unavailableFlyers.add(a.pilotId);
+        if (a.coPilotId) unavailableFlyers.add(a.coPilotId);
       }
       if (threepeatCells.has(cellKey)) {
         if (a.pilotId) threepeatFlyers.add(a.pilotId);
@@ -186,11 +207,12 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
     };
 
     conflictFlyers.forEach((id) => list.push({ flyerName: nameFor(id), type: "conflict" }));
+    unavailableFlyers.forEach((id) => list.push({ flyerName: nameFor(id), type: "unavailable" }));
     threepeatFlyers.forEach((id) => list.push({ flyerName: nameFor(id), type: "threepeat" }));
     overfourFlyers.forEach((id) => list.push({ flyerName: nameFor(id), type: "overfour" }));
 
     return list;
-  }, [state.assignments, state.users, conflictingCells, threepeatCells, overfourCells]);
+  }, [state.assignments, state.users, conflictingCells, unavailableCells, threepeatCells, overfourCells]);
 
   const dayAssignments = state.assignments.filter((a) => {
     const b = state.blocks.find((x) => x.id === a.blockId);
@@ -204,9 +226,9 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
   }
 
   function canFly(flyerId: string, block: Block) {
-    return state.availability.some(
-      (a) => a.flyerId === flyerId && a.day === block.day && rangesOverlap(a.start, a.end, block.start, block.end)
-    );
+    const flyer = state.users.find((u) => u.id === flyerId);
+    if (!flyer) return false;
+    return isFlyerAvailableForBlock(flyer, block, state.availability, state.unavailabilityRequests);
   }
 
   function performDrop(droppedFlyerId: string | null, aircraftId: string, blockId: string) {
@@ -396,10 +418,8 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
     const missingFlyers: { role: string; name: string }[] = [];
     const check = (fid: string | undefined, role: string) => {
       if (!fid) return;
-      if (!state.availability.some(
-        (a) => a.flyerId === fid && a.day === targetBlock.day && rangesOverlap(a.start, a.end, targetBlock.start, targetBlock.end)
-      )) {
-        const u = state.users.find((x) => x.id === fid);
+      const u = state.users.find((x) => x.id === fid);
+      if (!u || !isFlyerAvailableForBlock(u, targetBlock, state.availability, state.unavailabilityRequests)) {
         missingFlyers.push({ role, name: u ? lastName(u) : fid });
       }
     };
@@ -422,6 +442,8 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
     const newAvailability: Availability[] = [];
     const ensureAvail = (flyerId: string | undefined) => {
       if (!flyerId) return;
+      const flyer = state.users.find((u) => u.id === flyerId);
+      if (flyer?.track !== "ip") return;
       if (state.availability.some(
         (a) => a.flyerId === flyerId && a.day === targetBlock.day && rangesOverlap(a.start, a.end, targetBlock.start, targetBlock.end)
       )) return;
@@ -460,10 +482,8 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
     const missingFlyers: { role: string; name: string }[] = [];
     const check = (fid: string | undefined, role: string, block: Block) => {
       if (!fid) return;
-      if (!state.availability.some(
-        (a) => a.flyerId === fid && a.day === block.day && rangesOverlap(a.start, a.end, block.start, block.end)
-      )) {
-        const u = state.users.find((x) => x.id === fid);
+      const u = state.users.find((x) => x.id === fid);
+      if (!u || !isFlyerAvailableForBlock(u, block, state.availability, state.unavailabilityRequests)) {
         missingFlyers.push({ role, name: u ? lastName(u) : fid });
       }
     };
@@ -490,6 +510,8 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
     const newAvailability: Availability[] = [];
     const ensureAvail = (flyerId: string | undefined, block: Block) => {
       if (!flyerId) return;
+      const flyer = state.users.find((u) => u.id === flyerId);
+      if (flyer?.track !== "ip") return;
       if (state.availability.some(
         (a) => a.flyerId === flyerId && a.day === block.day && rangesOverlap(a.start, a.end, block.start, block.end)
       )) return;
@@ -544,6 +566,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
   }
 
   const conflicts = warningsList.filter((w) => w.type === "conflict");
+  const unavailableWarnings = warningsList.filter((w) => w.type === "unavailable");
   const threepeats = warningsList.filter((w) => w.type === "threepeat");
   const overfours = warningsList.filter((w) => w.type === "overfour");
   const drawerOptions: DrawerView[] = ["blocks", "aircraft", "flyers"];
@@ -676,12 +699,17 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
           </span>
 
           {/* Warnings summary */}
-          {(conflicts.length > 0 || threepeats.length > 0 || overfours.length > 0) && (
+          {(conflicts.length > 0 || unavailableWarnings.length > 0 || threepeats.length > 0 || overfours.length > 0) && (
             <>
               <span className="text-[12px] text-slate-400 font-mono">|</span>
               {conflicts.length > 0 && (
                 <span className="text-[11.5px] text-red-600" title={conflicts.map((w) => w.flyerName).join(", ")}>
                   ⚠ {conflicts.length} conflict{conflicts.length > 1 ? "s" : ""}: {conflicts.map((w) => w.flyerName.split(" ").pop()).join(", ")}
+                </span>
+              )}
+              {unavailableWarnings.length > 0 && (
+                <span className="text-[11.5px] text-orange-600" title={unavailableWarnings.map((w) => w.flyerName).join(", ")}>
+                  ! {unavailableWarnings.length} unavailable: {unavailableWarnings.map((w) => w.flyerName.split(" ").pop()).join(", ")}
                 </span>
               )}
               {threepeats.length > 0 && (
@@ -726,6 +754,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                 dayBlocks={dayBlocks}
                 assignmentsByCell={assignmentsByCell}
                 conflictingCells={conflictingCells}
+                unavailableCells={unavailableCells}
                 threepeatCells={threepeatCells}
                 overfourCells={overfourCells}
                 onDrop={performDrop}
@@ -760,12 +789,19 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                     <RosterPanel
                       state={state}
                       selectedBlock={selectedBlock}
+                      adminUser={user}
                       onBlockFilter={setSelectedBlockId}
                       availableForBlock={availableForBlock}
                       flyerFlightCount={flyerFlightCount}
                       rankOrder={rankOrder}
                       onChange={onChange}
                       onAutoFill={autoFillBlock}
+                    />
+
+                    <UnavailabilityRequestsPanel
+                      state={state}
+                      onChange={onChange}
+                      adminUser={user}
                     />
 
                     {/* WARNINGS */}
@@ -780,6 +816,13 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                               <span>⚠</span>
                               <span className="font-medium">{w.flyerName}</span>
                               <span className="text-red-500 ml-auto">conflict</span>
+                            </div>
+                          ))}
+                          {unavailableWarnings.map((w) => (
+                            <div key={w.flyerName} className="flex items-center gap-1.5 text-[11.5px] text-orange-700">
+                              <span>!</span>
+                              <span className="font-medium">{w.flyerName}</span>
+                              <span className="text-orange-500 ml-auto">unavailable</span>
                             </div>
                           ))}
                           {threepeats.map((w) => (
@@ -1034,6 +1077,7 @@ function SchedulerGrid({
   dayBlocks,
   assignmentsByCell,
   conflictingCells,
+  unavailableCells,
   threepeatCells,
   overfourCells,
   onDrop,
@@ -1050,6 +1094,7 @@ function SchedulerGrid({
   dayBlocks: Block[];
   assignmentsByCell: Map<string, Assignment>;
   conflictingCells: Set<string>;
+  unavailableCells: Set<string>;
   threepeatCells: Set<string>;
   overfourCells: Set<string>;
   onDrop: (flyerId: string, acId: string, blockId: string) => void;
@@ -1131,8 +1176,9 @@ function SchedulerGrid({
                   const isSelectedCol = selectedBlockId === block.id;
                   const isFull = !!pilot && !!coPilot;
                   const isConflict = assignment && conflictingCells.has(cellKey);
-                  const isThreepeat = !isConflict && assignment && threepeatCells.has(cellKey);
-                  const isOverfour = !isConflict && !isThreepeat && assignment && overfourCells.has(cellKey);
+                  const isUnavailable = !isConflict && assignment && unavailableCells.has(cellKey);
+                  const isThreepeat = !isConflict && !isUnavailable && assignment && threepeatCells.has(cellKey);
+                  const isOverfour = !isConflict && !isUnavailable && !isThreepeat && assignment && overfourCells.has(cellKey);
                   return (
                     <td key={block.id} className="py-1">
                       <div
@@ -1183,6 +1229,8 @@ function SchedulerGrid({
                             ? "bg-sky-100 border-sky-500 ring-2 ring-sky-400"
                             : isConflict
                             ? "bg-red-50 border-red-400 ring-1 ring-red-400"
+                            : isUnavailable
+                            ? "bg-orange-50 border-orange-400 ring-1 ring-orange-400"
                             : isThreepeat
                             ? "bg-amber-50 border-amber-400 ring-1 ring-amber-400"
                             : isOverfour
@@ -1206,9 +1254,10 @@ function SchedulerGrid({
                               <Pill tone="navy" className="text-[9px] py-0 px-1">PIC</Pill>
                               <span className="text-[11.5px] font-semibold truncate flex-1">
                                 {pilot.rank && <span className="text-[10px] opacity-80 mr-0.5">{pilot.rank}</span>}
-                                {lastName(pilot)}
+                              {lastName(pilot)}
                               </span>
                               {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
+                              {isUnavailable && <span className="text-[9px] text-orange-600 font-bold ml-auto" title="Approved unavailable time">!</span>}
                               {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
                               {isOverfour && <span className="text-[9px] text-rose-600 font-bold ml-auto" title="4+ flights in a day (SOP violation)">◎</span>}
                               <button
@@ -1227,6 +1276,7 @@ function SchedulerGrid({
                                   {lastName(coPilot)}
                                 </span>
                                 {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
+                                {isUnavailable && <span className="text-[9px] text-orange-600 font-bold ml-auto" title="Approved unavailable time">!</span>}
                                 {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
                                 {isOverfour && <span className="text-[9px] text-rose-600 font-bold ml-auto" title="4+ flights in a day (SOP violation)">◎</span>}
                                 <button
@@ -1337,6 +1387,7 @@ function SchedulerGrid({
                                 {lastName(coPilot)}
                               </span>
                               {isConflict && <span className="text-[9px] text-red-600 font-bold ml-auto" title="Scheduling conflict">⚠</span>}
+                              {isUnavailable && <span className="text-[9px] text-orange-600 font-bold ml-auto" title="Approved unavailable time">!</span>}
                               {isThreepeat && <span className="text-[9px] text-amber-600 font-bold ml-auto" title="3+ consecutive flights (SOP violation)">⚡</span>}
                               {isOverfour && <span className="text-[9px] text-rose-600 font-bold ml-auto" title="4+ flights in a day (SOP violation)">◎</span>}
                               <button
@@ -1481,9 +1532,100 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 const RANKS = ["COL", "LTC", "MAJ", "CPT", "1LT", "2LT"] as const;
 const QUALS = ["2LFE", "TP", "FL", "EL", "1LFE", "TNG", "NON-TNG", "AIF"] as const;
 
+function UnavailabilityRequestsPanel({
+  state,
+  onChange,
+  adminUser,
+}: {
+  state: AppState;
+  onChange: (next: AppState) => void;
+  adminUser: User;
+}) {
+  const pending = state.unavailabilityRequests
+    .filter((request) => request.status === "pending")
+    .slice()
+    .sort((a, b) => a.day - b.day || a.start.localeCompare(b.start));
+
+  function review(id: string, status: "approved" | "rejected") {
+    onChange({
+      ...state,
+      unavailabilityRequests: state.unavailabilityRequests.map((request) =>
+        request.id === id
+          ? {
+              ...request,
+              status,
+              reviewedById: adminUser.id,
+              reviewNote: status === "approved" ? "Approved by admin" : "Rejected by admin",
+            }
+          : request
+      ),
+    });
+  }
+
+  return (
+    <Card className="p-3">
+      <div className="flex items-center justify-between mb-2">
+        <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">
+          Unavailable Requests
+        </div>
+        <Pill tone={pending.length > 0 ? "amber" : "green"} className="text-[9px]">
+          {pending.length} pending
+        </Pill>
+      </div>
+
+      {pending.length === 0 ? (
+        <p className="text-[11.5px] text-slate-400">
+          Students are available by default unless Ops approves unavailable time.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {pending.map((request) => {
+            const flyer = state.users.find((u) => u.id === request.flyerId);
+            return (
+              <div key={request.id} className="rounded-lg border border-amber-100 bg-amber-50/50 p-2">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <div className="text-[12px] font-semibold text-navy-900 truncate">
+                      {flyer ? `${flyer.rank ? `${flyer.rank} ` : ""}${lastName(flyer)}` : "Unknown flyer"}
+                    </div>
+                    <div className="text-[10.5px] font-mono text-slate-500">
+                      {DAY_LABELS[request.day]} {request.start}-{request.end}
+                    </div>
+                  </div>
+                  {flyer?.callsign && (
+                    <span className="shrink-0 text-[9.5px] font-mono text-slate-500 bg-white border border-amber-100 rounded px-1.5 py-0.5">
+                      {flyer.callsign}
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-600 mt-1.5 leading-snug">{request.reason}</p>
+                <div className="grid grid-cols-2 gap-1.5 mt-2">
+                  <button
+                    onClick={() => review(request.id, "approved")}
+                    className="rounded-md bg-emerald-600 px-2 py-1 text-[10.5px] font-semibold text-white hover:bg-emerald-700 transition"
+                  >
+                    Approve
+                  </button>
+                  <button
+                    onClick={() => review(request.id, "rejected")}
+                    className="rounded-md bg-white border border-slate-200 px-2 py-1 text-[10.5px] font-semibold text-slate-600 hover:text-red-600 hover:border-red-200 transition"
+                  >
+                    Reject
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Card>
+  );
+}
+
 function RosterPanel({
   state,
   selectedBlock,
+  adminUser,
   onBlockFilter,
   availableForBlock,
   flyerFlightCount,
@@ -1493,6 +1635,7 @@ function RosterPanel({
 }: {
   state: AppState;
   selectedBlock: Block | null;
+  adminUser: User;
   onBlockFilter: (id: string | null) => void;
   availableForBlock: Set<string>;
   flyerFlightCount: Map<string, number>;
@@ -1559,7 +1702,51 @@ function RosterPanel({
 
   function handleToggleAvailability(flyerId: string) {
     if (!selectedBlock) return;
+    const flyer = state.users.find((u) => u.id === flyerId);
+    if (!flyer) return;
     const currentlyAvailable = availableForBlock.has(flyerId);
+
+    if (flyer.track === "student") {
+      const overlappingApproved = state.unavailabilityRequests.filter(
+        (request) =>
+          request.flyerId === flyerId &&
+          request.status === "approved" &&
+          request.day === selectedBlock.day &&
+          rangesOverlap(request.start, request.end, selectedBlock.start, selectedBlock.end)
+      );
+
+      if (currentlyAvailable) {
+        const request: UnavailabilityRequest = {
+          id: uid("unav"),
+          flyerId,
+          day: selectedBlock.day,
+          start: selectedBlock.start,
+          end: selectedBlock.end,
+          reason: "Marked unavailable by admin",
+          status: "approved",
+          reviewedById: adminUser.id,
+          reviewNote: "Created by admin from scheduler roster",
+        };
+        onChange({ ...state, unavailabilityRequests: [...state.unavailabilityRequests, request] });
+      } else {
+        const requestIds = new Set(overlappingApproved.map((request) => request.id));
+        onChange({
+          ...state,
+          unavailabilityRequests: state.unavailabilityRequests.map((request) =>
+            requestIds.has(request.id)
+              ? {
+                  ...request,
+                  status: "rejected",
+                  reviewedById: adminUser.id,
+                  reviewNote: "Marked available by admin",
+                }
+              : request
+          ),
+        });
+      }
+      return;
+    }
+
     if (currentlyAvailable) {
       const toRemove = state.availability.filter(
         (a) => a.flyerId === flyerId && a.day === selectedBlock.day && rangesOverlap(a.start, a.end, selectedBlock.start, selectedBlock.end)
@@ -1795,7 +1982,15 @@ function RosterPanel({
                           ? "text-red-500 hover:bg-red-50 hover:text-red-600"
                           : "text-sky-600 hover:bg-sky-50 hover:text-sky-700"
                       }`}
-                      title={isAvailable ? "Mark unavailable for this block" : "Mark available for this block"}
+                      title={
+                        f.track === "student"
+                          ? isAvailable
+                            ? "Approve student unavailable for this block"
+                            : "Mark student available for this block"
+                          : isAvailable
+                          ? "Mark unavailable for this block"
+                          : "Mark available for this block"
+                      }
                     >
                       {isAvailable ? "▽" : "△"}
                     </button>
@@ -2705,6 +2900,9 @@ function FlyersView({ state, onChange, compact }: Props & { compact?: boolean })
     <div className={compact ? "space-y-3" : "grid md:grid-cols-2 xl:grid-cols-3 gap-4"}>
       {flyers.map((f) => {
         const ranges = state.availability.filter((a) => a.flyerId === f.id);
+        const unavailableRequests = state.unavailabilityRequests.filter((request) => request.flyerId === f.id);
+        const approvedUnavailable = unavailableRequests.filter((request) => request.status === "approved").length;
+        const pendingUnavailable = unavailableRequests.filter((request) => request.status === "pending").length;
         const assigned = state.assignments.filter((a) => a.pilotId === f.id || a.coPilotId === f.id);
         const asPilot = assigned.filter((a) => a.pilotId === f.id).length;
         const asCoPilot = assigned.filter((a) => a.coPilotId === f.id).length;
@@ -2747,8 +2945,8 @@ function FlyersView({ state, onChange, compact }: Props & { compact?: boolean })
 
             <div className="grid grid-cols-3 gap-2 text-[12px] mb-4">
               <div className="p-2 rounded-lg bg-sky-50 border border-sky-100">
-                <div className="text-sky-700 font-semibold text-[15px]">{ranges.length}</div>
-                <div className="text-slate-500 text-[11px]">ranges</div>
+                <div className="text-sky-700 font-semibold text-[15px]">{f.track === "student" ? approvedUnavailable : ranges.length}</div>
+                <div className="text-slate-500 text-[11px]">{f.track === "student" ? "unavail" : "ranges"}</div>
               </div>
               <div className="p-2 rounded-lg bg-navy-50 border border-navy-100">
                 <div className="text-navy-700 font-semibold text-[15px]">{asPilot}</div>
@@ -2819,60 +3017,92 @@ function FlyersView({ state, onChange, compact }: Props & { compact?: boolean })
               </div>
             )}
 
-            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Availability</div>
-            <div className="space-y-1.5 mb-3">
-              {ranges.length === 0 ? (
-                <p className="text-[12px] text-slate-400 italic">None declared</p>
-              ) : (
-                ranges
-                  .slice()
-                  .sort((a, b) => a.day - b.day || a.start.localeCompare(b.start))
-                  .map((a) => (
-                    <div key={a.id} className="flex items-center gap-2 text-[12px] group">
-                      <span className="w-8 font-mono text-[10.5px] font-semibold text-slate-500">{DAY_LABELS[a.day]}</span>
-                      <span className="font-mono text-navy-900">{a.start} – {a.end}</span>
-                      <span className="text-[10.5px] text-slate-400 ml-auto">{duration(a.start, a.end).toFixed(1)}h</span>
-                      <button
-                        onClick={() => deleteAvail(a.id)}
-                        className="text-[10px] text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
-                      >
-                        ✕
-                      </button>
-                    </div>
-                  ))
-              )}
-            </div>
-            <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100">
-              <select
-                value={newAvailDay}
-                onChange={(e) => setNewAvailDay(Number(e.target.value))}
-                className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] font-mono text-navy-900 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
-              >
-                {DAY_LABELS.map((d, i) => (
-                  <option key={i} value={i}>{d}</option>
-                ))}
-              </select>
-              <Input
-                type="time"
-                value={newAvailStart}
-                onChange={(e) => setNewAvailStart(e.target.value)}
-                className="!w-[70px] !text-[10px] !py-1"
-              />
-              <span className="text-[10px] text-slate-400">–</span>
-              <Input
-                type="time"
-                value={newAvailEnd}
-                onChange={(e) => setNewAvailEnd(e.target.value)}
-                className="!w-[70px] !text-[10px] !py-1"
-              />
-              <button
-                onClick={addAvail}
-                disabled={newAvailStart >= newAvailEnd}
-                className="text-[14px] text-sky-600 hover:text-sky-700 disabled:text-slate-300 transition px-1"
-              >
-                +
-              </button>
-            </div>
+            {f.track === "student" ? (
+              <>
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">Unavailable Requests</div>
+                  {pendingUnavailable > 0 && <Pill tone="amber" className="text-[9px]">{pendingUnavailable} pending</Pill>}
+                </div>
+                <div className="space-y-1.5 mb-3">
+                  {unavailableRequests.length === 0 ? (
+                    <p className="text-[12px] text-slate-400 italic">Available for all blocks by default</p>
+                  ) : (
+                    unavailableRequests
+                      .slice()
+                      .sort((a, b) => a.day - b.day || a.start.localeCompare(b.start))
+                      .map((request) => (
+                        <div key={request.id} className="rounded-lg border border-slate-100 bg-slate-50 px-2 py-1.5">
+                          <div className="flex items-center gap-2 text-[12px]">
+                            <span className="w-8 font-mono text-[10.5px] font-semibold text-slate-500">{DAY_LABELS[request.day]}</span>
+                            <span className="font-mono text-navy-900">{request.start} - {request.end}</span>
+                            <Pill tone={request.status === "approved" ? "green" : request.status === "pending" ? "amber" : "slate"} className="ml-auto text-[9px]">
+                              {request.status}
+                            </Pill>
+                          </div>
+                          <p className="text-[10.5px] text-slate-500 mt-1">{request.reason}</p>
+                        </div>
+                      ))
+                  )}
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-2">Availability</div>
+                <div className="space-y-1.5 mb-3">
+                  {ranges.length === 0 ? (
+                    <p className="text-[12px] text-slate-400 italic">None declared</p>
+                  ) : (
+                    ranges
+                      .slice()
+                      .sort((a, b) => a.day - b.day || a.start.localeCompare(b.start))
+                      .map((a) => (
+                        <div key={a.id} className="flex items-center gap-2 text-[12px] group">
+                          <span className="w-8 font-mono text-[10.5px] font-semibold text-slate-500">{DAY_LABELS[a.day]}</span>
+                          <span className="font-mono text-navy-900">{a.start} - {a.end}</span>
+                          <span className="text-[10.5px] text-slate-400 ml-auto">{duration(a.start, a.end).toFixed(1)}h</span>
+                          <button
+                            onClick={() => deleteAvail(a.id)}
+                            className="text-[10px] text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                      ))
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5 pt-2 border-t border-slate-100">
+                  <select
+                    value={newAvailDay}
+                    onChange={(e) => setNewAvailDay(Number(e.target.value))}
+                    className="rounded border border-slate-200 bg-white px-1.5 py-1 text-[10px] font-mono text-navy-900 focus:outline-none focus:ring-2 focus:ring-sky-500/30"
+                  >
+                    {DAY_LABELS.map((d, i) => (
+                      <option key={i} value={i}>{d}</option>
+                    ))}
+                  </select>
+                  <Input
+                    type="time"
+                    value={newAvailStart}
+                    onChange={(e) => setNewAvailStart(e.target.value)}
+                    className="!w-[70px] !text-[10px] !py-1"
+                  />
+                  <span className="text-[10px] text-slate-400">-</span>
+                  <Input
+                    type="time"
+                    value={newAvailEnd}
+                    onChange={(e) => setNewAvailEnd(e.target.value)}
+                    className="!w-[70px] !text-[10px] !py-1"
+                  />
+                  <button
+                    onClick={addAvail}
+                    disabled={newAvailStart >= newAvailEnd}
+                    className="text-[14px] text-sky-600 hover:text-sky-700 disabled:text-slate-300 transition px-1"
+                  >
+                    +
+                  </button>
+                </div>
+              </>
+            )}
           </Card>
         );
       })}

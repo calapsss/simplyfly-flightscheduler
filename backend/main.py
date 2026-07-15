@@ -61,6 +61,18 @@ class Availability(BaseModel):
     end: str
 
 
+class UnavailabilityRequest(BaseModel):
+    id: str
+    flyerId: str
+    day: int
+    start: str
+    end: str
+    reason: str
+    status: Literal["pending", "approved", "rejected"]
+    reviewedById: str | None = None
+    reviewNote: str | None = None
+
+
 class Assignment(BaseModel):
     id: str
     pilotId: str | None = None
@@ -78,6 +90,7 @@ class AppState(BaseModel):
     blocks: list[Block]
     aircraft: list[Aircraft]
     availability: list[Availability]
+    unavailabilityRequests: list[UnavailabilityRequest] = Field(default_factory=list)
     assignments: list[Assignment]
 
 
@@ -154,6 +167,18 @@ def create_schema(conn: sqlite3.Connection) -> None:
           end TEXT NOT NULL
         );
 
+        CREATE TABLE IF NOT EXISTS unavailability_requests (
+          id TEXT PRIMARY KEY,
+          flyer_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+          day INTEGER NOT NULL CHECK (day BETWEEN 0 AND 6),
+          start TEXT NOT NULL,
+          end TEXT NOT NULL,
+          reason TEXT NOT NULL,
+          status TEXT NOT NULL CHECK (status IN ('pending', 'approved', 'rejected')),
+          reviewed_by_id TEXT REFERENCES users(id) ON DELETE SET NULL,
+          review_note TEXT
+        );
+
         CREATE TABLE IF NOT EXISTS assignments (
           id TEXT PRIMARY KEY,
           pilot_id TEXT REFERENCES users(id) ON DELETE SET NULL,
@@ -165,6 +190,8 @@ def create_schema(conn: sqlite3.Connection) -> None:
         );
 
         CREATE INDEX IF NOT EXISTS idx_availability_flyer ON availability(flyer_id);
+        CREATE INDEX IF NOT EXISTS idx_unavailability_flyer ON unavailability_requests(flyer_id);
+        CREATE INDEX IF NOT EXISTS idx_unavailability_status ON unavailability_requests(status);
         CREATE INDEX IF NOT EXISTS idx_assignments_aircraft_block ON assignments(aircraft_id, block_id);
         CREATE INDEX IF NOT EXISTS idx_assignments_block ON assignments(block_id);
 
@@ -200,6 +227,7 @@ def replace_state(conn: sqlite3.Connection, state: AppState) -> None:
             """
             DELETE FROM aircraft_available_blocks;
             DELETE FROM assignments;
+            DELETE FROM unavailability_requests;
             DELETE FROM availability;
             DELETE FROM aircraft;
             DELETE FROM blocks;
@@ -254,6 +282,27 @@ def replace_state(conn: sqlite3.Connection, state: AppState) -> None:
             [
                 (item.id, item.flyerId, item.day, item.start, item.end)
                 for item in state.availability
+            ],
+        )
+        conn.executemany(
+            """
+            INSERT INTO unavailability_requests (
+              id, flyer_id, day, start, end, reason, status, reviewed_by_id, review_note
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            [
+                (
+                    item.id,
+                    item.flyerId,
+                    item.day,
+                    item.start,
+                    item.end,
+                    item.reason,
+                    item.status,
+                    item.reviewedById,
+                    item.reviewNote,
+                )
+                for item in state.unavailabilityRequests
             ],
         )
         conn.executemany(
@@ -315,6 +364,20 @@ def read_state(conn: sqlite3.Connection) -> AppState:
         )
         for row in conn.execute("SELECT * FROM availability ORDER BY day, start, rowid")
     ]
+    unavailability_requests = [
+        UnavailabilityRequest(
+            id=row["id"],
+            flyerId=row["flyer_id"],
+            day=row["day"],
+            start=row["start"],
+            end=row["end"],
+            reason=row["reason"],
+            status=row["status"],
+            reviewedById=row["reviewed_by_id"],
+            reviewNote=row["review_note"],
+        )
+        for row in conn.execute("SELECT * FROM unavailability_requests ORDER BY day, start, rowid")
+    ]
     assignments = [
         Assignment(
             id=row["id"],
@@ -349,6 +412,7 @@ def read_state(conn: sqlite3.Connection) -> AppState:
         blocks=blocks,
         aircraft=aircraft,
         availability=availability,
+        unavailabilityRequests=unavailability_requests,
         assignments=assignments,
     )
 

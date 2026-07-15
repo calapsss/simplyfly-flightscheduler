@@ -45,6 +45,22 @@ export type Availability = {
   end: string;   // "HH:MM"
 };
 
+export type UnavailabilityStatus = "pending" | "approved" | "rejected";
+
+/** A student's request to be unavailable for a time range. */
+export type UnavailabilityRequest = {
+  id: string;
+  flyerId: string;
+  /** 0 = Sun ... 6 = Sat */
+  day: number;
+  start: string;
+  end: string;
+  reason: string;
+  status: UnavailabilityStatus;
+  reviewedById?: string;
+  reviewNote?: string;
+};
+
 /** A scheduled assignment: pilot + optional co-pilot → aircraft at a specific block */
 export type Assignment = {
   id: string;
@@ -63,6 +79,7 @@ export type AppState = {
   blocks: Block[];
   aircraft: Aircraft[];
   availability: Availability[];
+  unavailabilityRequests: UnavailabilityRequest[];
   assignments: Assignment[];
 };
 
@@ -77,4 +94,36 @@ export function lastName(user: User): string {
 /** Does a time range [start, end) overlap with another [start, end)? */
 export function rangesOverlap(aS: string, aE: string, bS: string, bE: string) {
   return aS < bE && bS < aE;
+}
+
+export function hasApprovedUnavailability(
+  user: User,
+  block: Pick<Block, "day" | "start" | "end">,
+  requests: UnavailabilityRequest[],
+) {
+  return requests.some(
+    (request) =>
+      request.flyerId === user.id &&
+      request.status === "approved" &&
+      request.day === block.day &&
+      rangesOverlap(request.start, request.end, block.start, block.end)
+  );
+}
+
+export function isFlyerAvailableForBlock(
+  user: User,
+  block: Pick<Block, "day" | "start" | "end">,
+  availability: Availability[],
+  requests: UnavailabilityRequest[] = [],
+) {
+  if (user.track === "student") {
+    return !hasApprovedUnavailability(user, block, requests);
+  }
+
+  return availability.some(
+    (available) =>
+      available.flyerId === user.id &&
+      available.day === block.day &&
+      rangesOverlap(available.start, available.end, block.start, block.end)
+  );
 }

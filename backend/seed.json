@@ -1484,5 +1484,6 @@
       "blockId": "b-6",
       "mission": "COM CHK"
     }
-  ]
+  ],
+  "unavailabilityRequests": []
 }
