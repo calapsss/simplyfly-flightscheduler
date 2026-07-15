@@ -86,6 +86,12 @@ export type AppState = {
 export const DAY_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 export const DAY_FULL = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
 
+export function getLocalDayIndex(date = new Date()): number {
+  const weekday = new Intl.DateTimeFormat("en-US", { weekday: "short" }).format(date);
+  const index = DAY_LABELS.findIndex((label) => label.toLowerCase() === weekday.toLowerCase());
+  return index >= 0 ? index : date.getDay();
+}
+
 export function lastName(user: User): string {
   const parts = user.name.split(" ");
   return parts[parts.length - 1];

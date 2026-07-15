@@ -1,6 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import type { AppState, Assignment, Availability, Block, Aircraft, User, Role, UnavailabilityRequest } from "../types";
-import { DAY_FULL, DAY_LABELS, isFlyerAvailableForBlock, lastName, rangesOverlap } from "../types";
+import { DAY_FULL, DAY_LABELS, getLocalDayIndex, isFlyerAvailableForBlock, lastName, rangesOverlap } from "../types";
 import { cn } from "../utils/cn";
 import { Card, SectionTitle, Button, Input, Label, Pill } from "./ui";
 import { Logo, PlaneIcon } from "./Logo";
@@ -12,12 +12,13 @@ type Props = {
 };
 
 type DrawerView = "blocks" | "aircraft" | "flyers";
-type AdminPage = "scheduler" | "users";
+type AdminPage = "scheduler" | "requests" | "users";
 
 type PropsWithReset = Props & { onReset: () => void; user: User; onLogout: () => void };
 
 export function AdminDashboard({ state, onChange, onReset, user, onLogout }: PropsWithReset) {
-  const [selectedDay, setSelectedDay] = useState(new Date().getDay());
+  const todayDay = getLocalDayIndex();
+  const [selectedDay, setSelectedDay] = useState(() => todayDay);
   const [selectedBlockId, setSelectedBlockId] = useState<string | null>(null);
   const [drawerView, setDrawerView] = useState<DrawerView | null>(null);
   const [adminPage, setAdminPage] = useState<AdminPage>("scheduler");
@@ -569,7 +570,9 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
   const unavailableWarnings = warningsList.filter((w) => w.type === "unavailable");
   const threepeats = warningsList.filter((w) => w.type === "threepeat");
   const overfours = warningsList.filter((w) => w.type === "overfour");
+  const pendingUnavailableCount = state.unavailabilityRequests.filter((request) => request.status === "pending").length;
   const drawerOptions: DrawerView[] = ["blocks", "aircraft", "flyers"];
+  const adminPages: AdminPage[] = user.isSuperUser ? ["scheduler", "requests", "users"] : ["scheduler", "requests"];
 
   function openAdminPage(page: AdminPage) {
     setAdminPage(page);
@@ -584,24 +587,27 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
           <div className="flex items-center gap-4">
             <Logo size={30} showWordmark />
             <div className="h-5 w-px bg-slate-200" />
-            {user.isSuperUser && (
-              <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg">
-                {(["scheduler", "users"] as AdminPage[]).map((page) => (
-                  <button
-                    key={page}
-                    onClick={() => openAdminPage(page)}
-                    className={cn(
-                      "px-2.5 py-1 rounded-md text-[12.5px] font-medium transition",
-                      adminPage === page
-                        ? "bg-white text-navy-900 shadow-sm"
-                        : "text-slate-500 hover:bg-slate-50 hover:text-navy-900"
-                    )}
-                  >
-                    {page === "scheduler" ? "Scheduler" : "Users"}
-                  </button>
-                ))}
-              </div>
-            )}
+            <div className="flex items-center gap-1 p-0.5 bg-slate-100 rounded-lg">
+              {adminPages.map((page) => (
+                <button
+                  key={page}
+                  onClick={() => openAdminPage(page)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-[12.5px] font-medium transition flex items-center gap-1.5",
+                    adminPage === page
+                      ? "bg-white text-navy-900 shadow-sm"
+                      : "text-slate-500 hover:bg-slate-50 hover:text-navy-900"
+                  )}
+                >
+                  <span>{page === "scheduler" ? "Scheduler" : page === "requests" ? "Requests" : "Users"}</span>
+                  {page === "requests" && pendingUnavailableCount > 0 && (
+                    <span className="rounded-full bg-amber-500 px-1.5 py-0.5 text-[9px] leading-none text-white">
+                      {pendingUnavailableCount}
+                    </span>
+                  )}
+                </button>
+              ))}
+            </div>
             {adminPage === "scheduler" && (
               <button
                 onClick={() => {
@@ -613,7 +619,7 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
                 title="Change day (click to cycle)"
               >
                 <span className="text-slate-400 text-[11px]">📅</span>
-                {DAY_LABELS[selectedDay]}
+                {selectedDay === todayDay ? `Today: ${DAY_LABELS[selectedDay]}` : DAY_LABELS[selectedDay]}
               </button>
             )}
           </div>
@@ -729,7 +735,9 @@ export function AdminDashboard({ state, onChange, onReset, user, onLogout }: Pro
 
       {/* ============================= MAIN ============================== */}
       <div className="max-w-[1600px] mx-auto px-6 py-5">
-        {adminPage === "users" && user.isSuperUser ? (
+        {adminPage === "requests" ? (
+          <UnavailabilityRequestsPage state={state} onChange={onChange} adminUser={user} />
+        ) : adminPage === "users" && user.isSuperUser ? (
           <UsersView state={state} onChange={onChange} currentUser={user} />
         ) : dayBlocks.length === 0 ? (
           <Card className="p-10 text-center">
@@ -1531,6 +1539,138 @@ function LegendDot({ color, label }: { color: string; label: string }) {
 
 const RANKS = ["COL", "LTC", "MAJ", "CPT", "1LT", "2LT"] as const;
 const QUALS = ["2LFE", "TP", "FL", "EL", "1LFE", "TNG", "NON-TNG", "AIF"] as const;
+
+function UnavailabilityRequestsPage({
+  state,
+  onChange,
+  adminUser,
+}: {
+  state: AppState;
+  onChange: (next: AppState) => void;
+  adminUser: User;
+}) {
+  const requests = state.unavailabilityRequests
+    .slice()
+    .sort((a, b) => {
+      const statusOrder = { pending: 0, approved: 1, rejected: 2 };
+      return statusOrder[a.status] - statusOrder[b.status] || a.day - b.day || a.start.localeCompare(b.start);
+    });
+  const pending = requests.filter((request) => request.status === "pending").length;
+  const approved = requests.filter((request) => request.status === "approved").length;
+  const rejected = requests.filter((request) => request.status === "rejected").length;
+
+  function review(id: string, status: "approved" | "rejected") {
+    onChange({
+      ...state,
+      unavailabilityRequests: state.unavailabilityRequests.map((request) =>
+        request.id === id
+          ? {
+              ...request,
+              status,
+              reviewedById: adminUser.id,
+              reviewNote: status === "approved" ? "Approved by admin" : "Rejected by admin",
+            }
+          : request
+      ),
+    });
+  }
+
+  return (
+    <div className="space-y-5">
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <SectionTitle
+            title="Unavailable Requests"
+            subtitle="Approve student unavailable windows here. Students remain available by default until a request is approved."
+          />
+        </div>
+        <div className="grid grid-cols-3 gap-2 text-center">
+          <div className="rounded-lg border border-amber-100 bg-amber-50 px-3 py-2">
+            <div className="text-[17px] font-semibold text-amber-700">{pending}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-amber-700">Pending</div>
+          </div>
+          <div className="rounded-lg border border-emerald-100 bg-emerald-50 px-3 py-2">
+            <div className="text-[17px] font-semibold text-emerald-700">{approved}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700">Approved</div>
+          </div>
+          <div className="rounded-lg border border-slate-200 bg-white px-3 py-2">
+            <div className="text-[17px] font-semibold text-slate-700">{rejected}</div>
+            <div className="text-[10px] font-semibold uppercase tracking-wider text-slate-500">Rejected</div>
+          </div>
+        </div>
+      </div>
+
+      {requests.length === 0 ? (
+        <Card className="p-10 text-center">
+          <div className="text-[14px] font-semibold text-navy-900">No unavailable requests yet.</div>
+          <p className="text-[12.5px] text-slate-500 mt-1">
+            Student requests submitted from the flyer dashboard will appear here for Ops approval.
+          </p>
+        </Card>
+      ) : (
+        <div className="grid gap-3">
+          {requests.map((request) => {
+            const flyer = state.users.find((u) => u.id === request.flyerId);
+            const reviewer = request.reviewedById ? state.users.find((u) => u.id === request.reviewedById) : null;
+            return (
+              <Card key={request.id} className="p-4">
+                <div className="grid gap-4 md:grid-cols-[1.4fr_1fr_auto] md:items-center">
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <div className="text-[14px] font-semibold text-navy-900">
+                        {flyer ? `${flyer.rank ? `${flyer.rank} ` : ""}${lastName(flyer)}` : "Unknown flyer"}
+                      </div>
+                      {flyer?.callsign && <Pill tone="navy">{flyer.callsign}</Pill>}
+                      <Pill tone={request.status === "approved" ? "green" : request.status === "pending" ? "amber" : "slate"}>
+                        {request.status}
+                      </Pill>
+                    </div>
+                    <div className="mt-1 text-[12.5px] text-slate-500">
+                      {DAY_FULL[request.day]} · <span className="font-mono">{request.start}-{request.end}</span>
+                    </div>
+                    <p className="mt-2 text-[13px] text-slate-700">{request.reason}</p>
+                    {reviewer && (
+                      <p className="mt-2 text-[11.5px] text-slate-400">
+                        Reviewed by {reviewer.callsign ?? reviewer.name}
+                        {request.reviewNote ? ` · ${request.reviewNote}` : ""}
+                      </p>
+                    )}
+                  </div>
+
+                  <div className="rounded-lg bg-slate-50 border border-slate-100 p-3 text-[12px] text-slate-600">
+                    <div className="font-semibold text-navy-900 mb-1">Scheduling effect</div>
+                    {request.status === "approved"
+                      ? "This student is unavailable for overlapping scheduler blocks."
+                      : request.status === "pending"
+                      ? "No scheduling effect until approved."
+                      : "Rejected requests do not affect scheduling."}
+                  </div>
+
+                  <div className="flex md:flex-col gap-2">
+                    <button
+                      onClick={() => review(request.id, "approved")}
+                      disabled={request.status === "approved"}
+                      className="rounded-lg bg-emerald-600 px-3 py-2 text-[12px] font-semibold text-white hover:bg-emerald-700 disabled:bg-slate-200 disabled:text-slate-400 transition"
+                    >
+                      Approve
+                    </button>
+                    <button
+                      onClick={() => review(request.id, "rejected")}
+                      disabled={request.status === "rejected"}
+                      className="rounded-lg border border-slate-200 bg-white px-3 py-2 text-[12px] font-semibold text-slate-600 hover:border-red-200 hover:text-red-600 disabled:bg-slate-100 disabled:text-slate-400 transition"
+                    >
+                      Reject
+                    </button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function UnavailabilityRequestsPanel({
   state,

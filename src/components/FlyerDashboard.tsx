@@ -1,6 +1,6 @@
 import { useState } from "react";
 import type { AppState, Availability, UnavailabilityRequest, User } from "../types";
-import { DAY_FULL, DAY_LABELS, lastName, rangesOverlap } from "../types";
+import { DAY_FULL, DAY_LABELS, getLocalDayIndex, lastName, rangesOverlap } from "../types";
 import { Card, SectionTitle, Button, Input, Label, Stat, Pill } from "./ui";
 import { PlaneIcon } from "./Logo";
 import { uid } from "../store";
@@ -18,7 +18,7 @@ export function FlyerDashboard({ state, user, onChange }: Props) {
     (a) => a.pilotId === user.id || a.coPilotId === user.id
   );
 
-  const [day, setDay] = useState<number>(new Date().getDay());
+  const [day, setDay] = useState<number>(() => getLocalDayIndex());
   const [start, setStart] = useState("09:00");
   const [end, setEnd] = useState("12:00");
   const [reason, setReason] = useState("");
